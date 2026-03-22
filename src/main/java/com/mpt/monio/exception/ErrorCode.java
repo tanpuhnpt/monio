@@ -13,6 +13,7 @@ public enum ErrorCode {
     JSON_INVALID(1001, "Invalid JSON request", HttpStatus.BAD_REQUEST),
     MESSAGE_KEY_INVALID(1002, "Invalid message key", HttpStatus.BAD_REQUEST),
     BIND_INVALID(1003, "Binding error occurred", HttpStatus.BAD_REQUEST),
+    UNAUTHENTICATED(1004, "Authentication is required", HttpStatus.UNAUTHORIZED),
     ;
 
     private final int code;
