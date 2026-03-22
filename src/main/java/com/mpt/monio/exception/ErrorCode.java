@@ -14,6 +14,7 @@ public enum ErrorCode {
     MESSAGE_KEY_INVALID(1002, "Invalid message key", HttpStatus.BAD_REQUEST),
     BIND_INVALID(1003, "Binding error occurred", HttpStatus.BAD_REQUEST),
     UNAUTHENTICATED(1004, "Authentication is required", HttpStatus.UNAUTHORIZED),
+    UNAUTHORIZED(1005, "You do not have permission to access", HttpStatus.FORBIDDEN),
 
     // AUTH ERROR
     EMAIL_BLANK(2001, "Email is required", HttpStatus.BAD_REQUEST),
@@ -27,6 +28,11 @@ public enum ErrorCode {
     // USER ERROR,
     USER_EXISTED(3001, "User already existed", HttpStatus.BAD_REQUEST),
     USER_NOT_FOUND(3002, "User not existed", HttpStatus.NOT_FOUND),
+
+    // CATEGORY ERROR
+    CATEGORY_EXISTED(6001, "Category already existed in this merchant", HttpStatus.BAD_REQUEST),
+    CATEGORY_NOT_FOUND(6002, "Category not existed in this merchant", HttpStatus.NOT_FOUND),
+    CATEGORY_NAME_BLANK(6003, "Category name is required", HttpStatus.BAD_REQUEST),
     ;
 
     private final int code;
