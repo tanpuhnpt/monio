@@ -1,3 +1,17 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /monio
+
 spring:
   application:
     name: monio
+  datasource:
+    url: ${DBMS_CONNECTION:jdbc:postgresql://localhost:5432/monio}
+    username: ${DBMS_USERNAME:admin}
+    password: ${DBMS_PASSWORD:171104}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
