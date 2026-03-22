@@ -34,4 +34,17 @@ public class AuthController {
     public ResponseEntity<?> introspect(@RequestBody IntrospectRequest introspectRequest) throws ParseException, JOSEException {
         return ResponseEntity.ok(authService.introspect(introspectRequest));
     }
+
+    @PostMapping("/log-out")
+    @Operation(summary = "Log out")
+    public ResponseEntity<?> logOut(@RequestBody LogoutRequest logoutRequest) throws ParseException, JOSEException {
+        authService.logOut(logoutRequest);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "Refresh token")
+    public ResponseEntity<?> refreshToken(@RequestBody RefreshRequest refreshRequest) throws ParseException, JOSEException {
+        return ResponseEntity.ok(authService.refreshToken(refreshRequest));
+    }
 }
