@@ -20,7 +20,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -79,16 +78,10 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     public Object updateWallet(Long id, UpdateWalletRequest updateWalletRequest) {
-        Wallet wallet = walletRepository.findByIdAndIsActiveTrue(id)
-                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
-
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-        if (!userRepository.existsById(userId))
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
 
-        // verify user ownership
-        if (!Objects.equals(wallet.getUser().getId(), userId))
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
 
         wallet.setName(updateWalletRequest.getName());
         wallet.setCurrency(updateWalletRequest.getCurrency());
@@ -102,16 +95,10 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     public void deleteWallet(Long id) {
-        Wallet wallet = walletRepository.findByIdAndIsActiveTrue(id)
-                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
-
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-        if (!userRepository.existsById(userId))
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
 
-        // verify user ownership
-        if (!Objects.equals(wallet.getUser().getId(), userId))
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
 
         wallet.setActive(false);
         walletRepository.save(wallet);
