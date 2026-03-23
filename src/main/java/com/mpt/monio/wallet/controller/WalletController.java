@@ -1,6 +1,7 @@
 package com.mpt.monio.wallet.controller;
 
-import com.mpt.monio.wallet.dto.WalletRequest;
+import com.mpt.monio.wallet.dto.CreateWalletRequest;
+import com.mpt.monio.wallet.dto.UpdateWalletRequest;
 import com.mpt.monio.wallet.service.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -20,16 +21,22 @@ public class WalletController {
         return ResponseEntity.ok(walletService.getAllWallets());
     }
 
+    @GetMapping("/{id}")
+    @Operation(summary = "Show a wallet for current user")
+    public ResponseEntity<?> getWallet(@PathVariable Long id) {
+        return ResponseEntity.ok(walletService.getWallet(id));
+    }
+
     @PostMapping
     @Operation(summary = "Create a new wallet")
-    public ResponseEntity<?> createWallet(@RequestBody @Valid WalletRequest walletRequest) {
-        return ResponseEntity.ok(walletService.createWallet(walletRequest));
+    public ResponseEntity<?> createWallet(@RequestBody @Valid CreateWalletRequest createWalletRequest) {
+        return ResponseEntity.ok(walletService.createWallet(createWalletRequest));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Update a wallet")
-    public ResponseEntity<?> updateWallet(@PathVariable Long id, @RequestBody WalletRequest walletRequest) {
-        return ResponseEntity.ok(walletService.updateWallet(id, walletRequest));
+    public ResponseEntity<?> updateWallet(@PathVariable Long id, @RequestBody UpdateWalletRequest updateWalletRequest) {
+        return ResponseEntity.ok(walletService.updateWallet(id, updateWalletRequest));
     }
 
     @DeleteMapping("/{id}")

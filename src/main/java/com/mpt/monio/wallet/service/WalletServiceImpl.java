@@ -5,7 +5,8 @@ import com.mpt.monio.auth.repo.UserRepository;
 import com.mpt.monio.exception.AppException;
 import com.mpt.monio.exception.ErrorCode;
 import com.mpt.monio.redis.RedisService;
-import com.mpt.monio.wallet.dto.WalletRequest;
+import com.mpt.monio.wallet.dto.CreateWalletRequest;
+import com.mpt.monio.wallet.dto.UpdateWalletRequest;
 import com.mpt.monio.wallet.dto.WalletResponse;
 import com.mpt.monio.wallet.entity.Wallet;
 import com.mpt.monio.wallet.mapper.WalletMapper;
@@ -19,7 +20,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -52,11 +52,21 @@ public class WalletServiceImpl implements WalletService {
     }
 
     @Override
-    public WalletResponse createWallet(WalletRequest walletRequest) {
+    public WalletResponse getWallet(Long id) {
+        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
+
+        Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
+
+        return walletMapper.toResponse(wallet);
+    }
+
+    @Override
+    public WalletResponse createWallet(CreateWalletRequest createWalletRequest) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        Wallet wallet = walletMapper.toEntity(walletRequest);
+        Wallet wallet = walletMapper.toEntity(createWalletRequest);
         wallet.setUser(user);
 
         try {
@@ -67,21 +77,14 @@ public class WalletServiceImpl implements WalletService {
     }
 
     @Override
-    public Object updateWallet(Long id, WalletRequest walletRequest) {
-        Wallet wallet = walletRepository.findByIdAndIsActiveTrue(id)
+    public Object updateWallet(Long id, UpdateWalletRequest updateWalletRequest) {
+        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
+
+        Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
 
-        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-        if (!userRepository.existsById(userId))
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
-
-        // verify user ownership
-        if (!Objects.equals(wallet.getUser().getId(), userId))
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-
-        wallet.setName(walletRequest.getName());
-        wallet.setBalance(walletRequest.getBalance());
-        wallet.setCurrency(walletRequest.getCurrency());
+        wallet.setName(updateWalletRequest.getName());
+        wallet.setCurrency(updateWalletRequest.getCurrency());
 
         try {
             return walletMapper.toResponse(walletRepository.save(wallet));
@@ -92,16 +95,10 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     public void deleteWallet(Long id) {
-        Wallet wallet = walletRepository.findByIdAndIsActiveTrue(id)
-                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
-
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-        if (!userRepository.existsById(userId))
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
 
-        // verify user ownership
-        if (!Objects.equals(wallet.getUser().getId(), userId))
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
 
         wallet.setActive(false);
         walletRepository.save(wallet);

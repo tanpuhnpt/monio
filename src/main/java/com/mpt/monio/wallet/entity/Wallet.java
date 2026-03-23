@@ -28,7 +28,7 @@ public class Wallet {
 
     String currency;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     User user;
 
     boolean isActive;
