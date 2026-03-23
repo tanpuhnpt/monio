@@ -21,6 +21,12 @@ public class WalletController {
         return ResponseEntity.ok(walletService.getAllWallets());
     }
 
+    @GetMapping("/{id}")
+    @Operation(summary = "Show a wallet for current user")
+    public ResponseEntity<?> getWallet(@PathVariable Long id) {
+        return ResponseEntity.ok(walletService.getWallet(id));
+    }
+
     @PostMapping
     @Operation(summary = "Create a new wallet")
     public ResponseEntity<?> createWallet(@RequestBody @Valid CreateWalletRequest createWalletRequest) {

@@ -53,6 +53,16 @@ public class WalletServiceImpl implements WalletService {
     }
 
     @Override
+    public WalletResponse getWallet(Long id) {
+        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
+
+        Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
+
+        return walletMapper.toResponse(wallet);
+    }
+
+    @Override
     public WalletResponse createWallet(CreateWalletRequest createWalletRequest) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));

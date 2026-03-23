@@ -9,6 +9,8 @@ import java.util.List;
 public interface WalletService {
     List<WalletResponse> getAllWallets();
 
+    WalletResponse getWallet(Long id);
+
     WalletResponse createWallet(CreateWalletRequest createWalletRequest);
 
     Object updateWallet(Long id, UpdateWalletRequest updateWalletRequest);
