@@ -19,7 +19,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -69,16 +68,10 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     public CategoryResponse updateCategory(Long id, CategoryRequest categoryRequest) {
-        Category category = categoryRepository.findByIdAndIsActiveTrue(id)
-                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
-
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-        if (!userRepository.existsById(userId))
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
 
-        // verify user ownership
-        if (!Objects.equals(category.getUser().getId(), userId))
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        Category category = categoryRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
 
         category.setName(categoryRequest.getName());
 
@@ -91,16 +84,10 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     public void deleteCategory(Long id) {
-        Category category = categoryRepository.findByIdAndIsActiveTrue(id)
-                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
-
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-        if (!userRepository.existsById(userId))
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
 
-        // verify user ownership
-        if (!Objects.equals(category.getUser().getId(), userId))
-            throw new AppException(ErrorCode.UNAUTHORIZED);
+        Category category = categoryRepository.findByIdAndUserIdAndIsActiveTrue(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
 
         category.setActive(false);
         categoryRepository.save(category);
