@@ -1,15 +1,15 @@
-package com.mpt.monio.category.service;
+package com.mpt.monio.wallet.service;
 
 import com.mpt.monio.auth.entity.User;
 import com.mpt.monio.auth.repo.UserRepository;
-import com.mpt.monio.category.dto.CategoryRequest;
-import com.mpt.monio.category.dto.CategoryResponse;
-import com.mpt.monio.category.entity.Category;
-import com.mpt.monio.category.mapper.CategoryMapper;
-import com.mpt.monio.category.repo.CategoryRepository;
 import com.mpt.monio.exception.AppException;
 import com.mpt.monio.exception.ErrorCode;
 import com.mpt.monio.redis.RedisService;
+import com.mpt.monio.wallet.dto.WalletRequest;
+import com.mpt.monio.wallet.dto.WalletResponse;
+import com.mpt.monio.wallet.entity.Wallet;
+import com.mpt.monio.wallet.mapper.WalletMapper;
+import com.mpt.monio.wallet.repo.WalletRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -25,24 +25,24 @@ import java.util.Objects;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
-public class CategoryServiceImpl implements CategoryService {
-    CategoryRepository categoryRepository;
-    CategoryMapper categoryMapper;
-    RedisService redisService;
+public class WalletServiceImpl implements WalletService {
+    WalletRepository walletRepository;
+    WalletMapper walletMapper;
     UserRepository userRepository;
+    RedisService redisService;
 
     @Override
-    public List<CategoryResponse> getAllCategories() {
+    public List<WalletResponse> getAllWallets() {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
-        String key = String.format("category:user:%d", userId);
-        List<CategoryResponse> responses = redisService.getAll(key, CategoryResponse.class);
+        String key = String.format("wallet:user:%d", userId);
+        List<WalletResponse> responses = redisService.getAll(key, WalletResponse.class);
 
         if (responses == null) {
-            log.info("query category");
-            responses = categoryRepository
+            log.info("query wallet");
+            responses = walletRepository
                     .findAllByUserIdAndIsActiveTrue(userId)
-                    .stream().map(categoryMapper::toResponse)
+                    .stream().map(walletMapper::toResponse)
                     .toList();
 
             redisService.saveAll(key, responses);
@@ -52,57 +52,58 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
-    public CategoryResponse createCategory(CategoryRequest categoryRequest) {
+    public WalletResponse createWallet(WalletRequest walletRequest) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        Category category = new Category();
-        category.setName(categoryRequest.getName());
-        category.setUser(user);
+        Wallet wallet = walletMapper.toEntity(walletRequest);
+        wallet.setUser(user);
 
         try {
-            return categoryMapper.toResponse(categoryRepository.save(category));
+            return walletMapper.toResponse(walletRepository.save(wallet));
         } catch (DataIntegrityViolationException e) {
-            throw new AppException(ErrorCode.CATEGORY_EXISTED);
+            throw new AppException(ErrorCode.WALLET_EXISTED);
         }
     }
 
     @Override
-    public CategoryResponse updateCategory(Long id, CategoryRequest categoryRequest) {
-        Category category = categoryRepository.findByIdAndIsActiveTrue(id)
-                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+    public Object updateWallet(Long id, WalletRequest walletRequest) {
+        Wallet wallet = walletRepository.findByIdAndIsActiveTrue(id)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
 
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         if (!userRepository.existsById(userId))
             throw new AppException(ErrorCode.USER_NOT_FOUND);
 
         // verify user ownership
-        if (!Objects.equals(category.getUser().getId(), userId))
+        if (!Objects.equals(wallet.getUser().getId(), userId))
             throw new AppException(ErrorCode.UNAUTHORIZED);
 
-        category.setName(categoryRequest.getName());
+        wallet.setName(walletRequest.getName());
+        wallet.setBalance(walletRequest.getBalance());
+        wallet.setCurrency(walletRequest.getCurrency());
 
         try {
-            return categoryMapper.toResponse(categoryRepository.save(category));
+            return walletMapper.toResponse(walletRepository.save(wallet));
         } catch (DataIntegrityViolationException e) {
-            throw new AppException(ErrorCode.CATEGORY_EXISTED);
+            throw new AppException(ErrorCode.WALLET_EXISTED);
         }
     }
 
     @Override
-    public void deleteCategory(Long id) {
-        Category category = categoryRepository.findByIdAndIsActiveTrue(id)
-                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+    public void deleteWallet(Long id) {
+        Wallet wallet = walletRepository.findByIdAndIsActiveTrue(id)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
 
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         if (!userRepository.existsById(userId))
             throw new AppException(ErrorCode.USER_NOT_FOUND);
 
         // verify user ownership
-        if (!Objects.equals(category.getUser().getId(), userId))
+        if (!Objects.equals(wallet.getUser().getId(), userId))
             throw new AppException(ErrorCode.UNAUTHORIZED);
 
-        category.setActive(false);
-        categoryRepository.save(category);
+        wallet.setActive(false);
+        walletRepository.save(wallet);
     }
 }
