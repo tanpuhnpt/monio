@@ -73,7 +73,6 @@ public class CategoryServiceImpl implements CategoryService {
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
 
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-        log.info("userId: {}", userId);
         if (!userRepository.existsById(userId))
             throw new AppException(ErrorCode.USER_NOT_FOUND);
 
@@ -98,6 +97,10 @@ public class CategoryServiceImpl implements CategoryService {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         if (!userRepository.existsById(userId))
             throw new AppException(ErrorCode.USER_NOT_FOUND);
+
+        // verify user ownership
+        if (!Objects.equals(category.getUser().getId(), userId))
+            throw new AppException(ErrorCode.UNAUTHORIZED);
 
         category.setActive(false);
         categoryRepository.save(category);
