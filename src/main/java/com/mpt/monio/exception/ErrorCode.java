@@ -33,6 +33,7 @@ public enum ErrorCode {
     CATEGORY_EXISTED(4001, "Category already existed in this user", HttpStatus.BAD_REQUEST),
     CATEGORY_NOT_FOUND(4002, "Category not existed in this user", HttpStatus.NOT_FOUND),
     CATEGORY_NAME_BLANK(4003, "Category name is required", HttpStatus.BAD_REQUEST),
+    CATEGORY_ID_NULL(4004, "Category ID is required", HttpStatus.BAD_REQUEST),
 
     // CATEGORY ERROR
     WALLET_EXISTED(5001, "Wallet already existed in this user", HttpStatus.BAD_REQUEST),
@@ -40,6 +41,17 @@ public enum ErrorCode {
     WALLET_NAME_BLANK(5003, "Wallet name is required", HttpStatus.BAD_REQUEST),
     WALLET_BALANCE_NEGATIVE(5004, "Wallet balance must be greater than or equal to 0", HttpStatus.BAD_REQUEST),
     WALLET_CURRENCY_BLANK(5005, "Wallet currency is required", HttpStatus.BAD_REQUEST),
+    WALLET_ID_NULL(4004, "Wallet ID is required", HttpStatus.BAD_REQUEST),
+
+    // TRANSACTION ERROR
+    TRANSACTION_NOT_FOUND(6001, "Transaction not existed in this user", HttpStatus.NOT_FOUND),
+    TRANSACTION_AMOUNT_NULL(6002, "Transaction amount is required", HttpStatus.BAD_REQUEST),
+    TRANSACTION_AMOUNT_NEGATIVE_ZERO(6003, "Transaction amount must be greater than 0", HttpStatus.BAD_REQUEST),
+    TRANSACTION_AMOUNT_INVALID(6004, "Transaction amount format is invalid", HttpStatus.BAD_REQUEST),
+    TRANSACTION_NOTE_INVALID(6005, "Transaction note is too long", HttpStatus.BAD_REQUEST),
+    TRANSACTION_TYPE_NULL(6006, "Transaction type is required", HttpStatus.BAD_REQUEST),
+    TRANSACTION_DATE_NULL(6007, "Transaction date is required", HttpStatus.BAD_REQUEST),
+    TRANSACTION_DATE_INVALID(6008, "Transaction date cannot be in the future", HttpStatus.BAD_REQUEST),
     ;
 
     private final int code;
