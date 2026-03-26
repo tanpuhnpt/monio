@@ -6,10 +6,10 @@ import com.mpt.monio.category.entity.Category;
 import com.mpt.monio.category.repo.CategoryRepository;
 import com.mpt.monio.exception.AppException;
 import com.mpt.monio.exception.ErrorCode;
-import com.mpt.monio.redis.RedisService;
 import com.mpt.monio.transaction.dto.TransactionRequest;
 import com.mpt.monio.transaction.dto.TransactionResponse;
 import com.mpt.monio.transaction.entity.Transaction;
+import com.mpt.monio.transaction.entity.TransactionType;
 import com.mpt.monio.transaction.mapper.TransactionMapper;
 import com.mpt.monio.transaction.repo.TransactionRepository;
 import com.mpt.monio.wallet.entity.Wallet;
@@ -29,7 +29,6 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
 public class TransactionServiceImpl implements TransactionService {
-    RedisService redisService;
     UserRepository userRepository;
     CategoryRepository categoryRepository;
     WalletRepository walletRepository;
@@ -40,20 +39,10 @@ public class TransactionServiceImpl implements TransactionService {
     public List<TransactionResponse> getAllTransactions() {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
-        String key = String.format("transaction:user:%d", userId);
-        List<TransactionResponse> responses = redisService.getAll(key, TransactionResponse.class);
-
-        if (responses == null) {
-            log.info("query transaction");
-            responses = transactionRepository
-                    .findAllByUserId(userId)
-                    .stream().map(mapper::toResponse)
-                    .toList();
-
-            redisService.saveAll(key, responses);
-        }
-
-        return responses;
+        return transactionRepository
+                .findAllByUserId(userId)
+                .stream().map(mapper::toResponse)
+                .toList();
     }
 
     @Override
@@ -83,13 +72,19 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setCategory(category);
         transaction.setWallet(wallet);
 
-        wallet.setBalance(wallet.getBalance().subtract(request.getAmount()));
+        // update balance in wallet
+        if (request.getType() == TransactionType.EXPENSE)
+            wallet.setBalance(wallet.getBalance().subtract(request.getAmount()));
+        else
+            wallet.setBalance(wallet.getBalance().add(request.getAmount()));
+
         walletRepository.save(wallet);
 
         return mapper.toResponse(transactionRepository.save(transaction));
     }
 
     @Override
+    @Transactional
     public TransactionResponse updateTransaction(Long id, TransactionRequest request) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
@@ -107,17 +102,33 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setCategory(category);
         transaction.setWallet(wallet);
 
+        // update balance in wallet
+        if (request.getType() == TransactionType.EXPENSE)
+            wallet.setBalance(wallet.getBalance().subtract(request.getAmount()));
+        else
+            wallet.setBalance(wallet.getBalance().add(request.getAmount()));
+
+        walletRepository.save(wallet);
+
         return mapper.toResponse(transactionRepository.save(transaction));
     }
 
     @Override
+    @Transactional
     public void deleteTransaction(Long id) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
-        int deletedCnt = transactionRepository.deleteByIdAndUserId(id, userId);
-        if (deletedCnt == 0)
-            throw new AppException(ErrorCode.TRANSACTION_NOT_FOUND);
+        Transaction transaction = transactionRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
-        // xử lí balance trong wallet?
+        // update balance in wallet
+        Wallet wallet = transaction.getWallet();
+        if (transaction.getType() == TransactionType.EXPENSE)
+            wallet.setBalance(wallet.getBalance().add(transaction.getAmount()));
+        else
+            wallet.setBalance(wallet.getBalance().subtract(transaction.getAmount()));
+        walletRepository.save(wallet);
+
+        transactionRepository.deleteByIdAndUserId(id, userId);
     }
 }

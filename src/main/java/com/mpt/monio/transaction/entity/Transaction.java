@@ -2,7 +2,6 @@ package com.mpt.monio.transaction.entity;
 
 import com.mpt.monio.auth.entity.User;
 import com.mpt.monio.category.entity.Category;
-import com.mpt.monio.redis.RedisListener;
 import com.mpt.monio.wallet.entity.Wallet;
 import jakarta.persistence.*;
 import lombok.*;
@@ -17,7 +16,6 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@EntityListeners(RedisListener.class)
 public class Transaction {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

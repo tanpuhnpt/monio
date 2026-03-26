@@ -30,5 +30,5 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Modifying
     @Transactional
     @Query("DELETE FROM Transaction t WHERE t.id = :id AND t.user.id = :userId")
-    int deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+    void deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 }
