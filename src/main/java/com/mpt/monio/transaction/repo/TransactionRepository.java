@@ -1,5 +1,6 @@
 package com.mpt.monio.transaction.repo;
 
+import com.mpt.monio.report.dto.ReportSummaryResponse;
 import com.mpt.monio.transaction.entity.Transaction;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Sort;
@@ -19,7 +20,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         JOIN FETCH t.wallet
         WHERE t.user.id = :userId
         AND t.createdAt BETWEEN :startDate AND :endDate
-
     """)
     List<Transaction> findAllByUserId(
             @Param("userId") Long userId,
@@ -39,4 +39,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Transactional
     @Query("DELETE FROM Transaction t WHERE t.id = :id AND t.user.id = :userId")
     void deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+
+    @Query("""
+        SELECT new com.mpt.monio.report.dto.ReportSummaryResponse(
+            COALESCE(SUM(CASE WHEN t.type = 'INCOME' THEN t.amount ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN t.type = 'EXPENSE' THEN t.amount ELSE 0 END), 0)
+        )
+        FROM Transaction t
+        WHERE t.user.id = :userId
+        AND t.createdAt BETWEEN :startDate AND :endDate
+        """)
+    ReportSummaryResponse getReportSummary(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
 }
