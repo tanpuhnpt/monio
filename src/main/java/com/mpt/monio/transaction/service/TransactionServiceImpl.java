@@ -61,7 +61,7 @@ public class TransactionServiceImpl implements TransactionService {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
         Transaction transaction = transactionRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
         return mapper.toResponse(transaction);
     }
@@ -94,7 +94,7 @@ public class TransactionServiceImpl implements TransactionService {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
         Transaction transaction = transactionRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
         Category category = categoryRepository.findByIdAndUserIdAndIsActiveTrue(request.getCategoryId(), userId)
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
@@ -116,7 +116,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         int deletedCnt = transactionRepository.deleteByIdAndUserId(id, userId);
         if (deletedCnt == 0)
-            throw new AppException(ErrorCode.WALLET_NOT_FOUND);
+            throw new AppException(ErrorCode.TRANSACTION_NOT_FOUND);
 
         // xử lí balance trong wallet?
     }

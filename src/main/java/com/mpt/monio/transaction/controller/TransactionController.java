@@ -3,6 +3,7 @@ package com.mpt.monio.transaction.controller;
 import com.mpt.monio.transaction.dto.TransactionRequest;
 import com.mpt.monio.transaction.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,13 +28,13 @@ public class TransactionController {
 
     @PostMapping
     @Operation(summary = "Create a new transaction")
-    public ResponseEntity<?> createTransaction(@RequestBody TransactionRequest request) {
+    public ResponseEntity<?> createTransaction(@RequestBody @Valid TransactionRequest request) {
         return ResponseEntity.ok(service.createTransaction(request));
     }
 
     @PutMapping("/{id}")
     @Operation(summary = "Update a transaction")
-    public ResponseEntity<?> updateTransaction(@PathVariable Long id, @RequestBody TransactionRequest request) {
+    public ResponseEntity<?> updateTransaction(@PathVariable Long id, @RequestBody @Valid TransactionRequest request) {
         return ResponseEntity.ok(service.updateTransaction(id, request));
     }
 
