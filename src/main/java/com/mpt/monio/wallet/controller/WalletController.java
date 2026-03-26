@@ -35,7 +35,7 @@ public class WalletController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Update a wallet")
-    public ResponseEntity<?> updateWallet(@PathVariable Long id, @RequestBody UpdateWalletRequest updateWalletRequest) {
+    public ResponseEntity<?> updateWallet(@PathVariable Long id, @RequestBody @Valid UpdateWalletRequest updateWalletRequest) {
         return ResponseEntity.ok(walletService.updateWallet(id, updateWalletRequest));
     }
 

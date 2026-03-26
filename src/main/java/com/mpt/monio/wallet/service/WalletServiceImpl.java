@@ -4,7 +4,6 @@ import com.mpt.monio.auth.entity.User;
 import com.mpt.monio.auth.repo.UserRepository;
 import com.mpt.monio.exception.AppException;
 import com.mpt.monio.exception.ErrorCode;
-import com.mpt.monio.redis.RedisService;
 import com.mpt.monio.wallet.dto.CreateWalletRequest;
 import com.mpt.monio.wallet.dto.UpdateWalletRequest;
 import com.mpt.monio.wallet.dto.WalletResponse;
@@ -29,26 +28,15 @@ public class WalletServiceImpl implements WalletService {
     WalletRepository walletRepository;
     WalletMapper walletMapper;
     UserRepository userRepository;
-    RedisService redisService;
 
     @Override
     public List<WalletResponse> getAllWallets() {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
-        String key = String.format("wallet:user:%d", userId);
-        List<WalletResponse> responses = redisService.getAll(key, WalletResponse.class);
-
-        if (responses == null) {
-            log.info("query wallet");
-            responses = walletRepository
-                    .findAllByUserIdAndIsActiveTrue(userId)
-                    .stream().map(walletMapper::toResponse)
-                    .toList();
-
-            redisService.saveAll(key, responses);
-        }
-
-        return responses;
+        return walletRepository
+                .findAllByUserIdAndIsActiveTrue(userId)
+                .stream().map(walletMapper::toResponse)
+                .toList();
     }
 
     @Override

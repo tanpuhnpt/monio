@@ -1,7 +1,6 @@
 package com.mpt.monio.wallet.entity;
 
 import com.mpt.monio.auth.entity.User;
-import com.mpt.monio.redis.RedisListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -15,7 +14,6 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "active_name"}))
-@EntityListeners(RedisListener.class)
 public class Wallet {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
