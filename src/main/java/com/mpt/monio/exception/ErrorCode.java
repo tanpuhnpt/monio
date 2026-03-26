@@ -39,9 +39,10 @@ public enum ErrorCode {
     WALLET_EXISTED(5001, "Wallet already existed in this user", HttpStatus.BAD_REQUEST),
     WALLET_NOT_FOUND(5002, "Wallet not existed in this user", HttpStatus.NOT_FOUND),
     WALLET_NAME_BLANK(5003, "Wallet name is required", HttpStatus.BAD_REQUEST),
-    WALLET_BALANCE_NEGATIVE(5004, "Wallet balance must be greater than or equal to 0", HttpStatus.BAD_REQUEST),
-    WALLET_CURRENCY_BLANK(5005, "Wallet currency is required", HttpStatus.BAD_REQUEST),
-    WALLET_ID_NULL(4004, "Wallet ID is required", HttpStatus.BAD_REQUEST),
+    WALLET_BALANCE_NULL(5004, "Wallet balance is required", HttpStatus.BAD_REQUEST),
+    WALLET_BALANCE_NEGATIVE(5005, "Wallet balance must be greater than or equal to 0", HttpStatus.BAD_REQUEST),
+    WALLET_CURRENCY_BLANK(5006, "Wallet currency is required", HttpStatus.BAD_REQUEST),
+    WALLET_ID_NULL(5007, "Wallet ID is required", HttpStatus.BAD_REQUEST),
 
     // TRANSACTION ERROR
     TRANSACTION_NOT_FOUND(6001, "Transaction not existed in this user", HttpStatus.NOT_FOUND),
