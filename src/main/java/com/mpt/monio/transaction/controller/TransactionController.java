@@ -5,8 +5,11 @@ import com.mpt.monio.transaction.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/transactions")
@@ -15,9 +18,15 @@ public class TransactionController {
     private final TransactionService service;
 
     @GetMapping
-    @Operation(summary = "Show all transactions for current user")
-    public ResponseEntity<?> getAllTransactions() {
-        return ResponseEntity.ok(service.getAllTransactions());
+    @Operation(summary = "Show all transactions for current user with date range filter")
+    public ResponseEntity<?> getAllTransactions(
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        return ResponseEntity.ok(service.getAllTransactions(startDate, endDate));
     }
 
     @GetMapping("/{id}")

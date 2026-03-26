@@ -19,9 +19,13 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 @Service
@@ -36,12 +40,24 @@ public class TransactionServiceImpl implements TransactionService {
     TransactionRepository transactionRepository;
 
     @Override
-    public List<TransactionResponse> getAllTransactions() {
+    public List<TransactionResponse> getAllTransactions(LocalDate startDate, LocalDate endDate) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+
+        // mặc định nếu không truyền thì lấy từ đầu tháng đến hiện tại
+        LocalDateTime startDateTime = (startDate != null)
+                ? startDate.atStartOfDay()
+                : LocalDate.now().withDayOfMonth(1).atStartOfDay();
+
+        LocalDateTime endDateTime = (endDate != null)
+                ? endDate.atTime(LocalTime.MAX)
+                : LocalDateTime.now();
+
         return transactionRepository
-                .findAllByUserId(userId)
-                .stream().map(mapper::toResponse)
+                .findAllByUserId(userId, startDateTime, endDateTime, sort)
+                .stream()
+                .map(mapper::toResponse)
                 .toList();
     }
 
