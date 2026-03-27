@@ -24,7 +24,7 @@ public class SecurityConfig {
     CustomJwtDecoder customJwtDecoder;
 
     String[] OPENAPI_ENDPOINTS = {"/v3/api-docs/**", "/swagger-ui/**"};
-    String[] PUBLIC_ENDPOINTS = {"/auth/**",};
+    String[] PUBLIC_ENDPOINTS = {"/auth/**", "/categories"};
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity httpSecurity) throws Exception {
