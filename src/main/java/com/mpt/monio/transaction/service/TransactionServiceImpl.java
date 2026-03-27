@@ -77,7 +77,7 @@ public class TransactionServiceImpl implements TransactionService {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        Category category = categoryRepository.findByIdAndUserIdAndIsActiveTrue(request.getCategoryId(), userId)
+        Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
 
         Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(request.getWalletId(), userId)
@@ -107,7 +107,7 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = transactionRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
-        Category category = categoryRepository.findByIdAndUserIdAndIsActiveTrue(request.getCategoryId(), userId)
+        Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
 
         Wallet wallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(request.getWalletId(), userId)
