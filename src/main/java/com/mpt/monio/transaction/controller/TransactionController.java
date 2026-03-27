@@ -1,6 +1,7 @@
 package com.mpt.monio.transaction.controller;
 
 import com.mpt.monio.transaction.dto.TransactionRequest;
+import com.mpt.monio.transaction.dto.TransferTransactionRequest;
 import com.mpt.monio.transaction.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -36,8 +37,14 @@ public class TransactionController {
     }
 
     @PostMapping
-    @Operation(summary = "Create a new transaction")
+    @Operation(summary = "Create an expense/income transaction")
     public ResponseEntity<?> createTransaction(@RequestBody @Valid TransactionRequest request) {
+        return ResponseEntity.ok(service.createTransaction(request));
+    }
+
+    @PostMapping("/transfer")
+    @Operation(summary = "Create a transfer transaction")
+    public ResponseEntity<?> createTransaction(@RequestBody @Valid TransferTransactionRequest request) {
         return ResponseEntity.ok(service.createTransaction(request));
     }
 

@@ -4,7 +4,8 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 
 public enum TransactionType {
     EXPENSE,
-    INCOME;
+    INCOME,
+    TRANSFER;
 
     @JsonCreator
     public static TransactionType fromValue(String value) {

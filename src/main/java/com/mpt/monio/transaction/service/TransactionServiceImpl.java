@@ -6,8 +6,10 @@ import com.mpt.monio.category.entity.Category;
 import com.mpt.monio.category.repo.CategoryRepository;
 import com.mpt.monio.exception.AppException;
 import com.mpt.monio.exception.ErrorCode;
+import com.mpt.monio.report.dto.DateRange;
 import com.mpt.monio.transaction.dto.TransactionRequest;
 import com.mpt.monio.transaction.dto.TransactionResponse;
+import com.mpt.monio.transaction.dto.TransferTransactionRequest;
 import com.mpt.monio.transaction.entity.Transaction;
 import com.mpt.monio.transaction.entity.TransactionType;
 import com.mpt.monio.transaction.mapper.TransactionMapper;
@@ -24,9 +26,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -45,17 +46,10 @@ public class TransactionServiceImpl implements TransactionService {
 
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
 
-        // mặc định nếu không truyền thì lấy từ đầu tháng đến hiện tại
-        LocalDateTime startDateTime = (startDate != null)
-                ? startDate.atStartOfDay()
-                : LocalDate.now().withDayOfMonth(1).atStartOfDay();
-
-        LocalDateTime endDateTime = (endDate != null)
-                ? endDate.atTime(LocalTime.MAX)
-                : LocalDateTime.now();
+        DateRange dateRange = DateRange.ofCurrentMonthIfNull(startDate, endDate);
 
         return transactionRepository
-                .findAllByUserId(userId, startDateTime, endDateTime, sort)
+                .findAllByUserId(userId, dateRange.start(), dateRange.end(), sort)
                 .stream()
                 .map(mapper::toResponse)
                 .toList();
@@ -95,6 +89,36 @@ public class TransactionServiceImpl implements TransactionService {
             wallet.setBalance(wallet.getBalance().add(request.getAmount()));
 
         walletRepository.save(wallet);
+
+        return mapper.toResponse(transactionRepository.save(transaction));
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse createTransaction(TransferTransactionRequest request) {
+        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
+        User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        Wallet sourceWallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(request.getSourceWalletId(), userId)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
+
+        Wallet destinationWallet = walletRepository.findByIdAndUserIdAndIsActiveTrue(request.getDestinationWalletId(), userId)
+                .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
+
+        if (Objects.equals(sourceWallet.getId(), destinationWallet.getId()))
+            throw new AppException(ErrorCode.DESTINATION_WALLET_INVALID);
+
+        Transaction transaction = mapper.toEntity(request);
+        transaction.setType(TransactionType.TRANSFER);
+        transaction.setUser(user);
+        transaction.setWallet(sourceWallet);
+        transaction.setDestinationWallet(destinationWallet);
+
+        // update balance in wallets
+        sourceWallet.setBalance(sourceWallet.getBalance().subtract(request.getAmount()));
+        destinationWallet.setBalance(destinationWallet.getBalance().add(request.getAmount()));
+
+        walletRepository.saveAll(List.of(sourceWallet, destinationWallet));
 
         return mapper.toResponse(transactionRepository.save(transaction));
     }
