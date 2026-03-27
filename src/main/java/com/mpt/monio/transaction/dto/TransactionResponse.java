@@ -25,4 +25,5 @@ public class TransactionResponse {
     String type;
     CategoryResponse category;
     WalletResponse wallet;
+    WalletResponse destinationWallet;
 }

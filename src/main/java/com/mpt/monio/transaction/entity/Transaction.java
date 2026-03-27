@@ -39,4 +39,7 @@ public class Transaction {
 
     @ManyToOne(fetch = FetchType.LAZY)
     Wallet wallet;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    Wallet destinationWallet;
 }

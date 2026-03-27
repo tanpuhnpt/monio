@@ -43,6 +43,7 @@ public enum ErrorCode {
     WALLET_BALANCE_NEGATIVE(5005, "Wallet balance must be greater than or equal to 0", HttpStatus.BAD_REQUEST),
     WALLET_CURRENCY_BLANK(5006, "Wallet currency is required", HttpStatus.BAD_REQUEST),
     WALLET_ID_NULL(5007, "Wallet ID is required", HttpStatus.BAD_REQUEST),
+    DESTINATION_WALLET_INVALID(5008, "Destination wallet must be different from source wallet", HttpStatus.BAD_REQUEST),
 
     // TRANSACTION ERROR
     TRANSACTION_NOT_FOUND(6001, "Transaction not existed in this user", HttpStatus.NOT_FOUND),
