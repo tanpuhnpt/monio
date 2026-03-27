@@ -1,5 +1,6 @@
 package com.mpt.monio.transaction.repo;
 
+import com.mpt.monio.report.dto.ReportItemResponse;
 import com.mpt.monio.report.dto.ReportSummaryResponse;
 import com.mpt.monio.transaction.entity.Transaction;
 import jakarta.transaction.Transactional;
@@ -48,10 +49,40 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         FROM Transaction t
         WHERE t.user.id = :userId
         AND t.createdAt BETWEEN :startDate AND :endDate
-        """)
+    """)
     ReportSummaryResponse getReportSummary(
             @Param("userId") Long userId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
+
+    @Query("""
+        SELECT new com.mpt.monio.report.dto.ReportItemResponse(c.id, c.name, SUM(t.amount))
+        FROM Transaction t JOIN t.category c
+        WHERE t.user.id = :userId
+        AND t.type = :type
+        AND t.createdAt BETWEEN :startDate AND :endDate
+        GROUP BY c.id, c.name
+        ORDER BY SUM(t.amount) DESC
+    """)
+    List<ReportItemResponse> getStatisticsByCategory(
+            @Param("userId") Long userId,
+            @Param("type") String type,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
+    @Query("""
+        SELECT new com.mpt.monio.report.dto.ReportItemResponse(w.id, w.name, SUM(t.amount))
+        FROM Transaction t JOIN t.wallet w
+        WHERE t.user.id = :userId
+        AND t.type = :type
+        AND t.createdAt BETWEEN :startDate AND :endDate
+        GROUP BY w.id, w.name
+        ORDER BY SUM(t.amount) DESC
+    """)
+    List<ReportItemResponse> getStatisticsByWallet(
+            @Param("userId") Long userId,
+            @Param("type") String type,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
 }
