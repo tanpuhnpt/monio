@@ -6,3 +6,17 @@ spring:
     url: ${DBMS_CONNECTION}
     username: ${DBMS_USERNAME}
     password: ${DBMS_PASSWORD}
+  main:
+    lazy-initialization: true # Chỉ khởi tạo Bean khi cần dùng, giúp startup nhanh hơn 20-30%
+  data:
+    jpa:
+      repositories:
+        bootstrap-mode: deferred # Trì hoãn việc khởi tạo Repository cho đến khi cần thiết
+  jpa:
+    show-sql: false # Tắt in log SQL để tiết kiệm CPU và I/O
+    open-in-view: false # Tắt cái Warning bạn thấy trong log, giúp giảm tải cho mỗi request
+
+springdoc:
+  api-docs:
+    enabled: true
+  writer-with-default-pretty-printer: false # Giảm tải khi render Swagger
