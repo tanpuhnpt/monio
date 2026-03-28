@@ -1,0 +1,8 @@
+server:
+  port: ${PORT}
+
+spring:
+  datasource:
+    url: ${DBMS_CONNECTION}
+    username: ${DBMS_USERNAME}
+    password: ${DBMS_PASSWORD}
