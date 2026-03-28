@@ -1,0 +1,9 @@
+target/
+*.jar
+.git
+.gitignore
+.dockerignore
+.env
+.idea/
+.vscode/
+HELP.md
