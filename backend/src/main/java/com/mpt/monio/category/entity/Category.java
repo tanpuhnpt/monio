@@ -1,6 +1,6 @@
 package com.mpt.monio.category.entity;
 
-import com.mpt.monio.redis.RedisListener;
+//import com.mpt.monio.redis.RedisListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -12,7 +12,6 @@ import org.hibernate.annotations.SQLRestriction;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@EntityListeners(RedisListener.class)
 @SQLRestriction("is_active = true")
 public class Category {
     @Id
