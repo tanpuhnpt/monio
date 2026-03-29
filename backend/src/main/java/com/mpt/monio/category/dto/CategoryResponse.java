@@ -1,14 +1,13 @@
 package com.mpt.monio.category.dto;
 
 import lombok.*;
-import lombok.experimental.FieldDefaults;
 
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE)
 public class CategoryResponse {
-    Long id;
-    String name;
+    private Long id;
+    private String name;
+    private String type;
 }

@@ -30,10 +30,8 @@ public enum ErrorCode {
     USER_NOT_FOUND(3002, "User not existed", HttpStatus.NOT_FOUND),
 
     // CATEGORY ERROR
-    CATEGORY_EXISTED(4001, "Category already existed in this user", HttpStatus.BAD_REQUEST),
-    CATEGORY_NOT_FOUND(4002, "Category not existed in this user", HttpStatus.NOT_FOUND),
-    CATEGORY_NAME_BLANK(4003, "Category name is required", HttpStatus.BAD_REQUEST),
-    CATEGORY_ID_NULL(4004, "Category ID is required", HttpStatus.BAD_REQUEST),
+    CATEGORY_NOT_FOUND(4001, "Category not existed in this user", HttpStatus.NOT_FOUND),
+    CATEGORY_ID_NULL(4002, "Category ID is required", HttpStatus.BAD_REQUEST),
 
     // CATEGORY ERROR
     WALLET_EXISTED(5001, "Wallet already existed in this user", HttpStatus.BAD_REQUEST),

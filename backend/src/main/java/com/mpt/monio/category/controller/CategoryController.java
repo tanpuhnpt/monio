@@ -1,5 +1,6 @@
 package com.mpt.monio.category.controller;
 
+import com.mpt.monio.category.entity.CategoryType;
 import com.mpt.monio.category.service.CategoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -13,8 +14,8 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping
-    @Operation(summary = "Show all categories")
-    public ResponseEntity<?> getAllCategories() {
-        return ResponseEntity.ok(categoryService.getAllCategories());
+    @Operation(summary = "Show all categories by type")
+    public ResponseEntity<?> getAllCategories(@RequestParam CategoryType type) {
+        return ResponseEntity.ok(categoryService.getAllCategories(type));
     }
 }
