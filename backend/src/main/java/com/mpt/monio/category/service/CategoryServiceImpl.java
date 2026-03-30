@@ -1,6 +1,7 @@
 package com.mpt.monio.category.service;
 
 import com.mpt.monio.category.dto.CategoryResponse;
+import com.mpt.monio.category.entity.CategoryType;
 import com.mpt.monio.category.mapper.CategoryMapper;
 import com.mpt.monio.category.repo.CategoryRepository;
 import lombok.AccessLevel;
@@ -20,9 +21,9 @@ public class CategoryServiceImpl implements CategoryService {
     CategoryMapper categoryMapper;
 
     @Override
-    public List<CategoryResponse> getAllCategories() {
+    public List<CategoryResponse> getAllCategories(CategoryType type) {
         return categoryRepository
-                .findAll()
+                .findAllByType(type)
                 .stream().map(categoryMapper::toResponse)
                 .toList();
     }

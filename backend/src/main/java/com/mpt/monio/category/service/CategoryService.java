@@ -1,9 +1,10 @@
 package com.mpt.monio.category.service;
 
 import com.mpt.monio.category.dto.CategoryResponse;
+import com.mpt.monio.category.entity.CategoryType;
 
 import java.util.List;
 
 public interface CategoryService {
-    List<CategoryResponse> getAllCategories();
+    List<CategoryResponse> getAllCategories(CategoryType type);
 }
