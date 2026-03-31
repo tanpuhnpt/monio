@@ -1,14 +1,7 @@
-const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+import { getApiUrl } from './apiConfig';
 
 const buildUrl = (endpoint = '') => {
-  const baseUrl = String(API_URL).replace(/\/+$/, '');
-  const normalizedEndpoint = String(endpoint).replace(/^\/+/, '');
-
-  if (!normalizedEndpoint) {
-    return baseUrl;
-  }
-
-  return `${baseUrl}/${normalizedEndpoint}`;
+  return getApiUrl(endpoint);
 };
 
 const parseJsonSafely = async (response) => {
@@ -42,7 +35,6 @@ export const fetchWithAuth = async (endpoint, options = {}) => {
 
   if (response.status === 401) {
     localStorage.removeItem('accessToken');
-    window.location.reload();
     throw new Error('Unauthorized. Please log in again.');
   }
 
