@@ -1,0 +1,18 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/monio_auth
+    username: admin
+    password: 171104
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  jwt:
+    signer-key: vXzlkcYAWyTfH8+TZ3/Uncec1eaLoljAbOOBWsZQSeInpLZxYwXAehEkDuBUV5K8
+    valid-duration: 1h
+    refreshable-duration: 10h

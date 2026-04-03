@@ -1,0 +1,41 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth-service
+              uri: lb://auth-service
+              predicates:
+                - Path=/auth/**
+              filters:
+                - StripPrefix=1
+            - id: category-service
+              uri: lb://category-service
+              predicates:
+                - Path=/category/**
+              filters:
+                - StripPrefix=1
+            - id: wallet-service
+              uri: lb://wallet-service
+              predicates:
+                - Path=/wallet/**
+              filters:
+                - StripPrefix=1
+            - id: transaction-service
+              uri: lb://transaction-service
+              predicates:
+                - Path=/transaction/**
+              filters:
+                - StripPrefix=1
+            - id: report-service
+              uri: lb://report-service
+              predicates:
+                - Path=/report/**
+              filters:
+                - StripPrefix=1
