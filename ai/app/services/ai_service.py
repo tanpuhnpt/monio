@@ -1,83 +1,55 @@
 from groq import Groq
 from app.core.config import GROQ_API_KEY
+from app.services.db_service import save_ai_response, save_user_request
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
 import json
 import re
 from datetime import datetime
+from typing import Any
+
+from app.services.memory_service import clear_pending_expense, get_pending_expense, set_pending_expense
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 CATEGORIES = ["Ăn uống", "Di chuyển", "Giải trí", "Khác", "Quà",
               "Mua sắm", "Sức khoẻ", "Sắc đẹp", "Học tập", "Du lịch", "Lương", "Thưởng"]
 
-def ask_groq(raw_text: str) -> dict:
-    categories = CATEGORIES
-    categories_str = ", ".join(f'"{c}"' for c in categories)
+AMOUNT_ONLY_RE = re.compile(
+    r"^[\d\.,\s]+(?:k|K|ngàn|nghìn|vnd|đ|dong)?$",
+    re.IGNORECASE
+)
 
-    prompt = f"""Extract information from this OCR invoice text and return ONLY a JSON object.
 
-OCR Text:
-{raw_text}
+def is_amount_only(text: str) -> bool:
+    return bool(AMOUNT_ONLY_RE.fullmatch(text.strip()))
 
-Return ONLY this JSON structure, nothing else, no explanation, no code:
-{{
-  "LocalDateTime": "YYYY-MM-DD HH:MM:SS",
-  "Total": "number only",
-  "Category": "one of the categories"
-}}
 
-Rules:
-- LocalDateTime: invoice date/time in format YYYY-MM-DD HH:MM:SS, use 00:00:00 if no time found
-- Total: total amount as number only, no currency symbols, no commas
-- Category: must be exactly one of: {categories_str}
-- If a field is not found, use null
-- Return ONLY the JSON, no markdown, no explanation, no code
-"""
+def parse_amount(text: str) -> float | None:
+    normalized = text.strip().lower().replace(" ", "")
+    normalized = normalized.replace("đ", "").replace("vnd", "").replace("dong", "")
 
-    response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",  # đổi model mạnh hơn, hiểu lệnh tốt hơn
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a data extraction assistant. You ONLY respond with valid JSON. Never write code. Never explain. Only output the JSON object."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0,
-        max_tokens=256
-    )
+    if normalized.endswith("k"):
+        base = normalized[:-1].replace(",", ".")
+        try:
+            return float(base) * 1000
+        except ValueError:
+            return None
 
-    raw_response = response.choices[0].message.content
-    print("AI response:", raw_response)  # debug
-
-    # Tìm JSON trong response
-    match = re.search(r'\{.*?\}', raw_response, re.DOTALL)
-    if not match:
-        raise HTTPException(status_code=500, detail="AI không trả về JSON hợp lệ")
-
-    json_str = match.group()
-    json_str = json_str.replace("'", '"')
-    json_str = json_str.replace("None", "null")
-    json_str = json_str.replace("True", "true")
-    json_str = json_str.replace("False", "false")
-
+    normalized = normalized.replace(",", "").replace(".", "")
     try:
-        result = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Không parse được JSON: {e}")
-
-    if result.get("Category") not in categories:
-        result["Category"] = "Khác"
-
-    return result
+        return float(normalized)
+    except ValueError:
+        return None
 
 
-async def ask_ai_expense(text: str):
+def _clean_result(result: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in result.items() if k != "raw_text"}
+
+
+def _extract_expense(text: str) -> dict[str, Any]:
     categories = CATEGORIES
     categories_str = ", ".join(f'"{c}"' for c in categories)
-
     today = datetime.now().strftime("%Y-%m-%d")
 
     prompt = f"""
@@ -88,6 +60,13 @@ DATE RULES:
 - If text contains "hôm qua" → LocalDateTime = (today - 1 day) 00:00:00
 - If date is given without year → use current year {datetime.now().year}
 - Do NOT guess dates.
+
+AMOUNT RULES (VERY IMPORTANT):
+- If the amount contains "k", "K", "ngàn", "nghìn", "ngàn đồng":
+    - Convert: 1k = 1000 VND.
+    - Example: "25k" → 25000, "45k" → 45000.
+- If multiple amounts are found, SUM them normally after conversion.
+- If the amount contains ".", treat it as thousands separator only if appropriate (e.g. "50.5k" is NOT allowed).
 
 IMPORTANT RULES:
 
@@ -135,5 +114,138 @@ Text: "{text}"
     )
 
     raw_output = resp.choices[0].message.content
-    json_str = re.search(r"\{.*?\}", raw_output, re.DOTALL).group()
+    json_match = re.search(r"\{.*?\}", raw_output, re.DOTALL)
+    if not json_match:
+        raise ValueError("AI không trả về JSON hợp lệ")
+
+    json_str = json_match.group()
+    json_str = json_str.replace("'", '"')
+    json_str = json_str.replace("None", "null")
+    json_str = json_str.replace("True", "true")
+    json_str = json_str.replace("False", "false")
+
     return json.loads(json_str)
+
+
+async def ask_ai_expense(text: str, user_id: int, db: Session):
+    pending = get_pending_expense(str(user_id))
+
+    # Save user request
+    save_user_request(db, user_id, text)
+
+    if pending and is_amount_only(text):
+        amount_value = parse_amount(text)
+        if amount_value is None:
+            result = {
+                "LocalDateTime": pending.get("LocalDateTime"),
+                "Total": None,
+                "Category": pending.get("Category"),
+                "Note": pending.get("Note"),
+                "ai_message": "Số tiền không hợp lệ. Vui lòng nhập lại số tiền đúng định dạng."
+            }
+            save_ai_response(db, user_id, result["ai_message"])
+            return result
+
+        pending["Total"] = amount_value
+        description = pending.get("Note") or "giao dịch"
+        pending["ai_message"] = f"Đã ghi nhận {description}, tổng số {int(amount_value)}."
+        clear_pending_expense(str(user_id))
+        save_ai_response(db, user_id, pending["ai_message"])
+        return _clean_result(pending)
+
+    if not pending and is_amount_only(text):
+        result = {
+            "LocalDateTime": None,
+            "Total": None,
+            "Category": None,
+            "Note": None,
+            "ai_message": "Bạn cần mô tả chi tiêu trước, ví dụ: 'Hôm nay tôi ăn sáng'."
+        }
+        save_ai_response(db, user_id, result["ai_message"])
+        return result
+
+    merged_text = text
+    if pending:
+        merged_text = f"{pending.get('raw_text', '')} {text}".strip()
+
+    result = _extract_expense(merged_text)
+
+    if result.get("Total") is None or result.get("LocalDateTime") is None:
+        pending_data = {
+            "LocalDateTime": result.get("LocalDateTime"),
+            "Total": result.get("Total"),
+            "Category": result.get("Category"),
+            "Note": result.get("Note"),
+            "ai_message": result.get("ai_message"),
+            "raw_text": merged_text,
+        }
+        set_pending_expense(str(user_id), pending_data)
+        save_ai_response(db, user_id, pending_data["ai_message"])
+        return _clean_result(pending_data)
+
+    clear_pending_expense(str(user_id))
+    save_ai_response(db, user_id, result["ai_message"])
+    return _clean_result(result)
+
+
+def ask_groq(raw_text: str) -> dict:
+    categories = CATEGORIES
+    categories_str = ", ".join(f'"{c}"' for c in categories)
+
+    prompt = f"""Extract information from this OCR invoice text and return ONLY a JSON object.
+
+OCR Text:
+{raw_text}
+
+Return ONLY this JSON structure, nothing else, no explanation, no code:
+{{
+  "LocalDateTime": "YYYY-MM-DD HH:MM:SS",
+  "Total": "number only",
+  "Category": "one of the categories"
+}}
+
+Rules:
+- LocalDateTime: invoice date/time in format YYYY-MM-DD HH:MM:SS, use 00:00:00 if no time found
+- Total: total amount as number only, no currency symbols, no commas
+- Category: must be exactly one of: {categories_str}
+- If a field is not found, use null
+- Return ONLY the JSON, no markdown, no explanation, no code
+"""
+
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a data extraction assistant. You ONLY respond with valid JSON. Never write code. Never explain. Only output the JSON object."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0,
+        max_tokens=256
+    )
+
+    raw_response = response.choices[0].message.content
+    match = re.search(r'\{.*?\}', raw_response, re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=500, detail="AI không trả về JSON hợp lệ")
+
+    json_str = match.group()
+    json_str = json_str.replace("'", '"')
+    json_str = json_str.replace("None", "null")
+    json_str = json_str.replace("True", "true")
+    json_str = json_str.replace("False", "false")
+
+    try:
+        result = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Không parse được JSON: {e}")
+
+    if result.get("Category") not in categories:
+        result["Category"] = "Khác"
+
+    return result
+
