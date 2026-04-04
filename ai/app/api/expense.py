@@ -3,14 +3,16 @@ from sqlalchemy.orm import Session
 from app.schemas.expense import (
     ExpenseTextRequest,
     ExpenseAIResponse,
-    UserRequestItem,
-    AIResponseItem,
 )
+from app.schemas.ai import AIResponseItem
+from app.schemas.user import UserRequestItem
 from app.services.ai_service import ask_ai_expense
 from app.services.db_service import get_user_requests, get_ai_responses
 from app.core.database import get_db
 
+
 router = APIRouter()
+
 
 @router.post("/add-expense-text", response_model=ExpenseAIResponse)
 async def add_expense_text(payload: ExpenseTextRequest, db: Session = Depends(get_db)):
