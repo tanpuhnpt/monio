@@ -6,3 +6,5 @@ numpy
 groq
 python-multipart
 python-dotenv
+SQLAlchemy
+pymysql
