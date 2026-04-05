@@ -7,6 +7,7 @@ import json
 import re
 from datetime import datetime
 from typing import Any
+import base64
 
 from app.services.memory_service import clear_pending_expense, get_pending_expense, set_pending_expense
 
@@ -188,95 +189,6 @@ async def ask_ai_expense(text: str, user_id: int, db: Session):
     return _clean_result(result)
 
 
-# def ask_groq(raw_text: str) -> dict:
-#     categories = CATEGORIES
-#     categories_str = ", ".join(f'"{c}"' for c in categories)
-
-#     prompt = f"""
-# You are an invoice extractor. The OCR text may contain MULTIPLE bills mixed together.
-# Your job is to detect and separate each bill, then extract structured data for each bill.
-
-# OCR TEXT (noisy, may contain duplicates or overlapping bills):
-# {raw_text}
-
-# OUTPUT FORMAT:
-# Return ONLY a JSON array. Each element MUST follow:
-# {{
-#   "LocalDateTime": "YYYY-MM-DD HH:MM:SS",
-#   "Total": "number only",
-#   "Category": "one of the categories"
-# }}
-
-# RULES FOR SPLITTING BILLS:
-# - A new bill starts when one of these appears:
-#   - A new time like “Giờ vào”, “Giờ in”, “HH:MM”, “HH.MM”
-#   - A new invoice number “Số: XXXXX”
-#   - A new block containing item names and prices
-#   - A new ilike “THANH TOAN” , “Tổng”, “Tiền hàng”
-# - Ignore duplicated or corrupted OCR lines.
-
-# LOCALDATETIME RULES:
-# - Extract date & time near the top of each bill.
-# - Accept formats: HH:MM DD/MM/YYYY, HH.MM DD-MM-YYYY, HH:MM, DD/MM/YYYY.
-# - If only time exists → use today’s date.
-# - If only date exists → time = 00:00:00.
-# - If missing → null.
-
-# TOTAL RULES:
-# - DO NOT sum numbers.
-# - For each bill, choose the amount after to “THANH TOAN”, “Tổng”, “Total”, “Tiền hàng”.
-# - If multiple candidates, choose the largest.
-# - Remove formatting → return only digits.
-
-# CATEGORY RULES:
-# - Infer from item names (coffee, tea, food → Ăn uống).
-# - Must be one of: {categories_str}
-# - If can't determine → null.
-
-# IMPORTANT:
-# - Return ONLY a JSON array.
-# - Every element must be one bill.
-# - No markdown, no explanation, no extra text.
-# """
-
-#     response = groq_client.chat.completions.create(
-#         model="llama-3.3-70b-versatile",
-#         messages=[
-#             {
-#                 "role": "system",
-#                 "content": "You are a data extraction assistant. You ONLY respond with valid JSON. Never write code. Never explain. Only output the JSON object."
-#             },
-#             {
-#                 "role": "user",
-#                 "content": prompt
-#             }
-#         ],
-#         temperature=0,
-#         max_tokens=512
-#     )
-#     print("Raw AI response:", response.choices)
-#     raw_response = response.choices[0].message.content
-#     print("Raw AI response:", raw_response)
-#     match = re.search(r'\{.*?\}', raw_response, re.DOTALL)
-#     if not match:
-#         raise HTTPException(status_code=500, detail="AI không trả về JSON hợp lệ")
-
-#     json_str = match.group()
-#     json_str = json_str.replace("'", '"')
-#     json_str = json_str.replace("None", "null")
-#     json_str = json_str.replace("True", "true")
-#     json_str = json_str.replace("False", "false")
-
-#     try:
-#         result = json.loads(json_str)
-#     except json.JSONDecodeError as e:
-#         raise HTTPException(status_code=500, detail=f"Không parse được JSON: {e}")
-
-#     if result.get("Category") not in categories:
-#         result["Category"] = "Khác"
-
-#     return result
-
 def ask_groq(raw_text: str) -> list[dict]:
     categories = CATEGORIES
     categories_str = ", ".join(f'"{c}"' for c in categories)
@@ -378,6 +290,113 @@ IMPORTANT:
 
     for bill in results:
         if bill.get("Category") not in categories:
+            bill["Category"] = "Khác"
+
+    return results
+
+
+def extract_from_image(image_bytes: bytes, content_type: str = "image/jpeg") -> list[dict]:
+    categories_str = ", ".join(f'"{c}"' for c in CATEGORIES)
+
+    # Chuyển ảnh sang base64
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    prompt = f"""
+You are an invoice extractor. Look at this invoice image carefully.
+The image may contain MULTIPLE bills. Detect and separate each bill.
+
+OUTPUT FORMAT:
+Return ONLY a JSON array. Each element MUST follow:
+{{
+  "LocalDateTime": "YYYY-MM-DD HH:MM:SS",
+  "Total": "number only",
+  "Category": "one of the categories"
+}}
+
+LOCALDATETIME RULES:
+- Extract date & time near the top of each bill.
+- Accept formats: HH:MM DD/MM/YYYY, HH.MM DD-MM-YYYY, HH:MM, DD/MM/YYYY.
+- If only time → use today's date.
+- If only date → time = 00:00:00.
+- If missing → null.
+
+TOTAL RULES:
+- DO NOT sum numbers.
+- Find the amount after "THANH TOAN", "Tổng", "Total", "Tiền hàng".
+- If multiple candidates, choose the largest.
+- Return digits only, no formatting.
+
+CATEGORY RULES:
+- Infer from item names (coffee, tea, food → Ăn uống).
+- Must be one of: {categories_str}
+- If can't determine → null.
+
+IMPORTANT:
+- Return ONLY a JSON array.
+- No markdown, no explanation, no extra text.
+"""
+
+    response = groq_client.chat.completions.create(
+        model="meta-llama/llama-4-scout-17b-16e-instruct",  # model có vision
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a data extraction assistant. Return ONLY valid JSON array. No explanation."
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{content_type};base64,{image_b64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        temperature=0.2,
+        max_tokens=4096,
+        top_p=0.95
+    )
+
+    raw_response = response.choices[0].message.content
+    print("Raw AI response:", raw_response)
+
+    # Clean response
+    cleaned = raw_response.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+        cleaned = re.sub(r'\s*```$', '', cleaned)
+        cleaned = cleaned.strip()
+
+    match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+    if not match:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI không trả về JSON array hợp lệ. Raw: {raw_response[:200]}"
+        )
+
+    json_str = match.group()
+    json_str = json_str.replace("'", '"')
+    json_str = json_str.replace("None", "null")
+    json_str = json_str.replace("True", "true")
+    json_str = json_str.replace("False", "false")
+
+    try:
+        results = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Không parse được JSON: {e}")
+
+    if not isinstance(results, list):
+        results = [results]
+
+    for bill in results:
+        if bill.get("Category") not in CATEGORIES:
             bill["Category"] = "Khác"
 
     return results
