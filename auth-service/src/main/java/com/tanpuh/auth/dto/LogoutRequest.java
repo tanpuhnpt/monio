@@ -1,11 +1,5 @@
 package com.tanpuh.auth.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.NotBlank;
 
-@Getter
-@AllArgsConstructor @NoArgsConstructor
-public class LogoutRequest {
-    private String token;
-}
+public record LogoutRequest ( @NotBlank(message = "TOKEN_BLANK") String token ) {}

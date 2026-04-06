@@ -53,11 +53,11 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse signUp(SignUpRequest signUpRequest) {
-        if (userRepository.existsByEmail(signUpRequest.getEmail()))
+        if (userRepository.existsByEmail(signUpRequest.email()))
             throw new AppException(ErrorCode.USER_EXISTED);
 
         User user = userMapper.toEntity(signUpRequest);
-        user.setPassword(passwordEncoder.encode(signUpRequest.getPassword()));
+        user.setPassword(passwordEncoder.encode(signUpRequest.password()));
         userRepository.save(user);
 
         return new AuthResponse(generateToken(user.getId().toString()));
@@ -65,10 +65,10 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse authenticate(LogInRequest logInRequest) {
-        User user = userRepository.findByEmail(logInRequest.getEmail())
+        User user = userRepository.findByEmail(logInRequest.email())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        boolean isAuthenticated = passwordEncoder.matches(logInRequest.getPassword(), user.getPassword());
+        boolean isAuthenticated = passwordEncoder.matches(logInRequest.password(), user.getPassword());
         if (!isAuthenticated) throw new AppException(ErrorCode.UNAUTHENTICATED);
 
         return new AuthResponse(generateToken(user.getId().toString()));
@@ -79,7 +79,7 @@ public class AuthServiceImpl implements AuthService {
         boolean isValid = true;
 
         try {
-            verifyToken(introspectRequest.getToken(), false);
+            verifyToken(introspectRequest.token(), false);
         } catch (AppException e) {
             isValid = false;
         }
@@ -90,7 +90,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void logOut(LogoutRequest logoutRequest) throws ParseException, JOSEException {
         try {
-            var signedJwt = verifyToken(logoutRequest.getToken(), true);
+            var signedJwt = verifyToken(logoutRequest.token(), true);
             invalidateToken(signedJwt);
         } catch (AppException e) {
             log.error("Token is already expired");
@@ -99,7 +99,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse refreshToken(RefreshRequest refreshRequest) throws ParseException, JOSEException {
-        var signedJwt = verifyToken(refreshRequest.getToken(), true);
+        var signedJwt = verifyToken(refreshRequest.token(), true);
         invalidateToken(signedJwt);
 
         String userIdFromJwt = signedJwt.getJWTClaimsSet().getSubject();
