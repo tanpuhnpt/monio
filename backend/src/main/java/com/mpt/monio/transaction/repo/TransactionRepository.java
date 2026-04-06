@@ -33,14 +33,6 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         SELECT t FROM Transaction t
         JOIN FETCH t.category
         JOIN FETCH t.wallet
-        WHERE t.user.id = :userId
-    """)
-    List<Transaction> findAllByUserId(@Param("userId") Long userId, Sort sort);
-
-    @Query("""
-        SELECT t FROM Transaction t
-        JOIN FETCH t.category
-        JOIN FETCH t.wallet
         WHERE t.id = :id AND t.user.id = :userId
     """)
     Optional<Transaction> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
