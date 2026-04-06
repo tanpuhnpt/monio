@@ -30,12 +30,6 @@ public class TransactionController {
         return ResponseEntity.ok(service.getAllTransactions(startDate, endDate));
     }
 
-    @GetMapping
-    @Operation(summary = "Show all transactions for current user")
-    public ResponseEntity<?> getAllTransactions() {
-        return ResponseEntity.ok(service.getAllTransactions());
-    }
-
     @GetMapping("/{id}")
     @Operation(summary = "Show a transaction for current user")
     public ResponseEntity<?> getTransaction(@PathVariable Long id) {

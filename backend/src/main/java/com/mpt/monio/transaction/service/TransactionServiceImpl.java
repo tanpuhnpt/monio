@@ -56,19 +56,6 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     @Override
-    public List<TransactionResponse> getAllTransactions() {
-        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
-
-        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-
-        return transactionRepository
-                .findAllByUserId(userId, sort)
-                .stream()
-                .map(mapper::toResponse)
-                .toList();
-    }
-
-    @Override
     public TransactionResponse getTransaction(Long id) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 

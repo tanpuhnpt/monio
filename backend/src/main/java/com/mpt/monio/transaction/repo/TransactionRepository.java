@@ -20,21 +20,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         JOIN FETCH t.category
         JOIN FETCH t.wallet
         WHERE t.user.id = :userId
-        AND t.createdAt BETWEEN :startDate AND :endDate
+        AND (:startDate IS NULL OR t.createdAt >= :startDate)
+        AND (:endDate IS NULL OR t.createdAt <= :endDate)
     """)
     List<Transaction> findAllByUserId(
             @Param("userId") Long userId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate,
             Sort sort);
-
-    @Query("""
-        SELECT t FROM Transaction t
-        JOIN FETCH t.category
-        JOIN FETCH t.wallet
-        WHERE t.user.id = :userId
-    """)
-    List<Transaction> findAllByUserId(@Param("userId") Long userId, Sort sort);
 
     @Query("""
         SELECT t FROM Transaction t
