@@ -10,8 +10,6 @@ import java.util.List;
 public interface TransactionService {
     List<TransactionResponse> getAllTransactions(LocalDate startDate, LocalDate endDate);
 
-    List<TransactionResponse> getAllTransactions();
-
     TransactionResponse getTransaction(Long id);
 
     TransactionResponse createTransaction(TransactionRequest request);
