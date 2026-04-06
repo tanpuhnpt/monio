@@ -17,14 +17,10 @@ spring:
               uri: lb://category-service
               predicates:
                 - Path=/categories/**
-              filters:
-                - StripPrefix=1
             - id: wallet-service
               uri: lb://wallet-service
               predicates:
                 - Path=/wallets/**
-              filters:
-                - StripPrefix=1
             - id: transaction-service
               uri: lb://transaction-service
               predicates:
