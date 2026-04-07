@@ -1,4 +1,4 @@
-package com.tanpuh.auth.config;
+package com.tanpuh.category.config;
 
 import com.tanpuh.common.component.CustomAuthEntryPoint;
 import com.tanpuh.common.component.CustomJwtDecoder;
@@ -11,8 +11,6 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -25,7 +23,7 @@ public class SecurityConfig {
     CustomJwtDecoder customJwtDecoder;
 
 //    String[] OPENAPI_ENDPOINTS = {"/v3/api-docs/**", "/swagger-ui/**"};
-    String[] PUBLIC_ENDPOINTS = {"/auth/**"};
+    String[] PUBLIC_ENDPOINTS = {"/categories/**"};
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity httpSecurity) throws Exception {
@@ -43,10 +41,5 @@ public class SecurityConfig {
                         .authenticationEntryPoint(customAuthEntryPoint)
                 )
                 .build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(10);
     }
 }
