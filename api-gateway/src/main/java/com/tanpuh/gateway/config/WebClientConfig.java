@@ -1,12 +1,12 @@
 package com.tanpuh.gateway.config;
 
 import com.tanpuh.gateway.repo.AuthClient;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsWebFilter;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.support.WebClientAdapter;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
@@ -15,10 +15,14 @@ import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 public class WebClientConfig {
 
     @Bean
-    WebClient webClient(){
-        return WebClient.builder()
-                .baseUrl("lb://auth-service")
-                .build();
+    @LoadBalanced
+    public WebClient.Builder webClientBuilder() {
+        return WebClient.builder();
+    }
+
+    @Bean
+    WebClient authWebClient(WebClient.Builder builder){
+        return builder.baseUrl("lb://auth-service").build();
     }
 
     @Bean
