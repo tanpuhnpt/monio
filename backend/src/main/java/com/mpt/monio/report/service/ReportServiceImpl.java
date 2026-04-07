@@ -35,7 +35,7 @@ public class ReportServiceImpl implements ReportService{
         DateRange dateRange = DateRange.ofCurrentMonthIfNull(startDate, endDate);
 
         List<ReportItemResponse> items = transactionRepository
-                .getStatisticsByCategory(userId, type.name(), dateRange.start(), dateRange.end());
+                .getStatisticsByCategory(userId, type, dateRange.start(), dateRange.end());
 
         BigDecimal grandTotal = calculateGrandTotal(items);
 
@@ -52,7 +52,7 @@ public class ReportServiceImpl implements ReportService{
         DateRange dateRange = DateRange.ofCurrentMonthIfNull(startDate, endDate);
 
         List<ReportItemResponse> items = transactionRepository
-                .getStatisticsByWallet(userId, type.name(), dateRange.start(), dateRange.end());
+                .getStatisticsByWallet(userId, type, dateRange.start(), dateRange.end());
 
         BigDecimal grandTotal = calculateGrandTotal(items);
 

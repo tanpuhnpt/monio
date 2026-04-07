@@ -3,6 +3,7 @@ package com.mpt.monio.transaction.repo;
 import com.mpt.monio.report.dto.ReportItemResponse;
 import com.mpt.monio.report.dto.ReportSummaryResponse;
 import com.mpt.monio.transaction.entity.Transaction;
+import com.mpt.monio.transaction.entity.TransactionType;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -68,7 +69,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     """)
     List<ReportItemResponse> getStatisticsByCategory(
             @Param("userId") Long userId,
-            @Param("type") String type,
+            @Param("type") TransactionType type,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
 
@@ -83,7 +84,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     """)
     List<ReportItemResponse> getStatisticsByWallet(
             @Param("userId") Long userId,
-            @Param("type") String type,
+            @Param("type") TransactionType type,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
 }
