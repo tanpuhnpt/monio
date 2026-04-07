@@ -1,4 +1,4 @@
-package com.tanpuh.auth.component;
+package com.tanpuh.common.component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tanpuh.common.exception.ErrorCode;

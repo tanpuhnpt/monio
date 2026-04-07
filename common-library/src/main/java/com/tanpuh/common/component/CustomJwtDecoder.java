@@ -1,4 +1,4 @@
-package com.tanpuh.auth.component;
+package com.tanpuh.common.component;
 
 import com.nimbusds.jwt.SignedJWT;
 import org.springframework.security.oauth2.jwt.Jwt;
