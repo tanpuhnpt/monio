@@ -1,8 +1,21 @@
 from fastapi import FastAPI
-from app.api import expense, ocr
-from app.core.database import engine, Base
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.database import Base, engine
+from app.api import chat
 
-app = FastAPI(title="Personal Financial Management AI", version="1.0")
 Base.metadata.create_all(bind=engine)
-app.include_router(ocr.router, tags=["OCR"])
-app.include_router(expense.router, tags=["Expense"])
+
+app = FastAPI(title="Monio AI Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat.router, tags=["Chat"])
+
+@app.get("/")
+def root():
+    return {"message": "Monio AI Service đang chạy!"}

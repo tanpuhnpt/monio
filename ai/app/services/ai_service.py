@@ -1,402 +1,150 @@
 from groq import Groq
 from app.core.config import GROQ_API_KEY
-from app.services.db_service import save_ai_response, save_user_request
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
-import json
-import re
 from datetime import datetime
-from typing import Any
-import base64
-
-from app.services.memory_service import clear_pending_expense, get_pending_expense, set_pending_expense
+import json, re
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-CATEGORIES = ["Ăn uống", "Di chuyển", "Giải trí", "Khác", "Quà",
-              "Mua sắm", "Sức khoẻ", "Sắc đẹp", "Học tập", "Du lịch", "Lương", "Thưởng"]
+EXPENSE_CATEGORIES = {
+    1: "Ăn uống", 2: "Giải trí", 3: "Di chuyển",
+    4: "Sức khỏe", 5: "Giáo dục", 6: "Du lịch",
+    7: "Quà", 8: "Gia đình", 9: "Khác",
+    13: "Hóa đơn & Tiện ích", 14: "Mua sắm"
+}
+INCOME_CATEGORIES = {10: "Lương", 11: "Thưởng", 12: "Khác"}
 
-AMOUNT_ONLY_RE = re.compile(
-    r"^[\d\.,\s]+(?:k|K|ngàn|nghìn|vnd|đ|dong)?$",
-    re.IGNORECASE
-)
-
-
-def is_amount_only(text: str) -> bool:
-    return bool(AMOUNT_ONLY_RE.fullmatch(text.strip()))
-
-
-def parse_amount(text: str) -> float | None:
-    normalized = text.strip().lower().replace(" ", "")
-    normalized = normalized.replace("đ", "").replace("vnd", "").replace("dong", "")
-
-    if normalized.endswith("k"):
-        base = normalized[:-1].replace(",", ".")
-        try:
-            return float(base) * 1000
-        except ValueError:
-            return None
-
-    normalized = normalized.replace(",", "").replace(".", "")
-    try:
-        return float(normalized)
-    except ValueError:
-        return None
+EXPENSE_MAPPING = {v: k for k, v in EXPENSE_CATEGORIES.items()}
+INCOME_MAPPING  = {v: k for k, v in INCOME_CATEGORIES.items()}
+ALL_CATEGORIES  = list(EXPENSE_CATEGORIES.values()) + list(INCOME_CATEGORIES.values())
 
 
-def _clean_result(result: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in result.items() if k != "raw_text"}
+def get_category_id(category: str, tx_type: str) -> int:
+    if tx_type == "INCOME":
+        return INCOME_MAPPING.get(category, 12)
+    return EXPENSE_MAPPING.get(category, 9)
 
 
-def _extract_expense(text: str) -> dict[str, Any]:
-    categories = CATEGORIES
-    categories_str = ", ".join(f'"{c}"' for c in categories)
+def classify_and_reply(message: str, history: list, wallets: list) -> dict:
+    now   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     today = datetime.now().strftime("%Y-%m-%d")
 
-    prompt = f"""
-You are an expense extractor. Read the Vietnamese text and return ONLY valid JSON.
+    history_text = "\n".join([
+        f"{h.role.upper()}: {h.message}" for h in history
+    ]) or "Chưa có lịch sử."
 
-DATE RULES:
-- If text contains "hôm nay", "nay", "today" → LocalDateTime = {today} 00:00:00
-- If text contains "hôm qua" → LocalDateTime = (today - 1 day) 00:00:00
-- If date is given without year → use current year {datetime.now().year}
-- Do NOT guess dates.
+    wallets_text = "\n".join([
+        f"- id:{w['id']} name:{w['name']} balance:{w['balance']:,} {w['currency']}"
+        for w in wallets
+    ]) or "Không có ví nào."
 
-AMOUNT RULES (VERY IMPORTANT):
-- If the amount contains "k", "K", "ngàn", "nghìn", "ngàn đồng":
-    - Convert: 1k = 1000 VND.
-    - Example: "25k" → 25000, "45k" → 45000.
-- If multiple amounts are found, SUM them normally after conversion.
-- If the amount contains ".", treat it as thousands separator only if appropriate (e.g. "50.5k" is NOT allowed).
+    categories_str = ", ".join(f'"{c}"' for c in ALL_CATEGORIES)
 
-IMPORTANT RULES:
+    prompt = f"""You are a Vietnamese personal expense tracking chatbot.
 
-- Do NOT guess missing information.
-- If the text does NOT clearly contain the amount → "Total": null
-- If the text does NOT contain a date expression (e.g. "hôm nay", "hôm qua", "23/6", "1-2") 
-    → "LocalDateTime": null 
-    → ai_message: "Bạn vui lòng cung cấp ngày giao dịch."
-- If the text contains words like "hôm nay", "nay", "today" 
-    → LocalDateTime = today's real date using format YYYY-MM-DD 00:00:00.
-- If the date is given without year → automatically fill with current year {datetime.now().year}.
-- If the text does NOT mention what was purchased → "Note": null
-- If category cannot be determined → "Category": null
-- If ANY important information is missing (amount / item / date) 
-    → ai_message must describe exactly what is missing.
+NOW = "{now}"
+TODAY = "{today}"
 
-If all info is complete:
-- ai_message = "Tôi đã ghi nhận giao dịch của bạn."
+CONVERSATION HISTORY:
+{history_text}
 
-OPTION A RULES (MERGE):
-- If multiple amounts are found → SUM into "Total".
-- Note must summarize all items.
-- Category is based on the overall meaning.
+USER WALLETS:
+{wallets_text}
 
-Return ONLY this JSON:
+USER: "{message}"
+
+Classify intent and respond. Return ONLY this JSON:
 {{
-  "LocalDateTime": "YYYY-MM-DD HH:MM:SS or null",
-  "Total": number or null,
-  "Category": one of [{categories_str}] or null,
-  "Note": "short description in Vietnamese or null",
-  "ai_message": "Vietnamese message"
+  "intent": "add_expense | add_income | missing_info | confirm_save | update_pending | cancel | query | out_of_scope",
+  "reply": "Vietnamese response to user",
+  "data": {{
+    "LocalDateTime": "YYYY-MM-DD HH:MM:SS or null",
+    "Total": number or null,
+    "Category": "category name or null",
+    "Note": "short note or null",
+    "WalletName": "wallet name if user mentioned or null"
+  }}
 }}
 
-Text: "{text}"
+## INTENT RULES
+
+### add_expense
+- User nói chi tiêu CÓ số tiền: "ăn sáng 50k", "mua sách 100k", "đổ xăng 200k"
+- reply: "Ghi nhận chi tiêu: [mô tả]. Bạn muốn lưu vào ví nào? Các ví: [liệt kê tên ví]"
+
+### add_income  
+- User nói nhận tiền CÓ số tiền: "nhận lương 10 triệu", "được thưởng 500k"
+- reply: "Ghi nhận thu nhập: [mô tả]. Bạn muốn lưu vào ví nào?"
+
+### missing_info
+- Giống add_expense/add_income NHƯNG thiếu số tiền hoặc không rõ
+- reply: hỏi lại cho đủ thông tin
+
+### confirm_save
+- User đồng ý lưu: "ok", "lưu đi", "đồng ý", "có", "ừ", "yes", "lưu vào ví [tên]"
+- Nếu user chỉ định ví trong lúc confirm → điền WalletName
+- reply: "Đang lưu giao dịch..."
+
+### update_pending
+- User muốn sửa: "lộn rồi", "sửa lại", "không phải", "thực ra là..."
+- reply: xác nhận thông tin mới và hỏi lại
+
+### cancel
+- User hủy: "thôi", "không lưu", "hủy", "cancel"
+- reply: "Đã hủy giao dịch."
+
+### query
+- User hỏi về chi tiêu, số dư ví
+- reply: trả lời dựa trên wallet data
+
+### out_of_scope
+- Ngoài phạm vi chi tiêu
+- reply: "Tôi chỉ hỗ trợ quản lý chi tiêu cá nhân."
+
+## DATE RULES
+- "hôm nay", "nay", không nói ngày → LocalDateTime = "{now}"
+- "hôm qua" → ngày hôm qua + "00:00:00"
+- Nói giờ cụ thể "7h sáng" → TODAY + "07:00:00"
+- Nói ngày cụ thể → dùng ngày đó + "00:00:00"
+
+## AMOUNT RULES  
+- "10k" = 10000, "50k" = 50000
+- "1 triệu" = 1000000, "1.5 triệu" = 1500000
+- "10 nghìn" = 10000
+
+## CATEGORY RULES
+Categories: {categories_str}
+- Tự động chọn category phù hợp nhất
+- "ăn sáng/trưa/tối/uống cà phê" → "Ăn uống"
+- "grab/taxi/xe buýt/xăng" → "Di chuyển"
+- "lương/thưởng" → income categories
+
+Always reply in Vietnamese. Return ONLY valid JSON.
 """
 
-    resp = groq_client.chat.completions.create(
+    response = groq_client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
-            {"role": "system", "content": "You only respond with valid JSON. No explanation."},
-            {"role": "user", "content": prompt},
+            {"role": "system", "content": "You are an expense assistant. Return ONLY valid JSON. No explanation."},
+            {"role": "user",   "content": prompt}
         ],
         temperature=0,
-        max_tokens=256
+        max_tokens=512
     )
 
-    raw_output = resp.choices[0].message.content
-    json_match = re.search(r"\{.*?\}", raw_output, re.DOTALL)
-    if not json_match:
-        raise ValueError("AI không trả về JSON hợp lệ")
+    raw = response.choices[0].message.content
+    print(f"AI raw: {raw}")
 
-    json_str = json_match.group()
-    json_str = json_str.replace("'", '"')
-    json_str = json_str.replace("None", "null")
-    json_str = json_str.replace("True", "true")
-    json_str = json_str.replace("False", "false")
-
-    return json.loads(json_str)
-
-
-async def ask_ai_expense(text: str, user_id: int, db: Session):
-    pending = get_pending_expense(str(user_id))
-
-    # Save user request
-    save_user_request(db, user_id, text)
-
-    if pending and is_amount_only(text):
-        amount_value = parse_amount(text)
-        if amount_value is None:
-            result = {
-                "LocalDateTime": pending.get("LocalDateTime"),
-                "Total": None,
-                "Category": pending.get("Category"),
-                "Note": pending.get("Note"),
-                "ai_message": "Số tiền không hợp lệ. Vui lòng nhập lại số tiền đúng định dạng."
-            }
-            save_ai_response(db, user_id, result["ai_message"])
-            return result
-
-        pending["Total"] = amount_value
-        description = pending.get("Note") or "giao dịch"
-        pending["ai_message"] = f"Đã ghi nhận {description}, tổng số {int(amount_value)}."
-        clear_pending_expense(str(user_id))
-        save_ai_response(db, user_id, pending["ai_message"])
-        return _clean_result(pending)
-
-    if not pending and is_amount_only(text):
-        result = {
-            "LocalDateTime": None,
-            "Total": None,
-            "Category": None,
-            "Note": None,
-            "ai_message": "Bạn cần mô tả chi tiêu trước, ví dụ: 'Hôm nay tôi ăn sáng'."
-        }
-        save_ai_response(db, user_id, result["ai_message"])
-        return result
-
-    merged_text = text
-    if pending:
-        merged_text = f"{pending.get('raw_text', '')} {text}".strip()
-
-    result = _extract_expense(merged_text)
-
-    if result.get("Total") is None or result.get("LocalDateTime") is None:
-        pending_data = {
-            "LocalDateTime": result.get("LocalDateTime"),
-            "Total": result.get("Total"),
-            "Category": result.get("Category"),
-            "Note": result.get("Note"),
-            "ai_message": result.get("ai_message"),
-            "raw_text": merged_text,
-        }
-        set_pending_expense(str(user_id), pending_data)
-        save_ai_response(db, user_id, pending_data["ai_message"])
-        return _clean_result(pending_data)
-
-    clear_pending_expense(str(user_id))
-    save_ai_response(db, user_id, result["ai_message"])
-    return _clean_result(result)
-
-
-def ask_groq(raw_text: str) -> list[dict]:
-    categories = CATEGORIES
-    categories_str = ", ".join(f'"{c}"' for c in categories)
-
-    prompt = f"""
-You are an invoice extractor. The OCR text may contain MULTIPLE bills mixed together.
-Your job is to detect and separate each bill, then extract structured data for each bill.
-
-OCR TEXT (noisy, may contain duplicates or overlapping bills):
-{raw_text}
-
-OUTPUT FORMAT:
-Return ONLY a JSON array. Each element MUST follow:
-{{
-  "LocalDateTime": "YYYY-MM-DD HH:MM:SS",
-  "Total": "number only",
-  "Category": "one of the categories"
-}}
-
-RULES FOR SPLITTING BILLS:
-- A new bill starts when one of these appears:
-  - A new time like “Giờ vào”, “Giờ in”, “HH:MM”, “HH.MM”
-  - A new invoice number “Số: XXXXX”
-  - A new block containing item names and prices
-  - A new ilike “THANH TOAN” , “Tổng”, “Tiền hàng”
-- Ignore duplicated or corrupted OCR lines.
-
-LOCALDATETIME RULES:
-- Extract date & time near the top of each bill.
-- Accept formats: HH:MM DD/MM/YYYY, HH.MM DD-MM-YYYY, HH:MM, DD/MM/YYYY.
-- If only time exists → use today’s date.
-- If only date exists → time = 00:00:00.
-- If missing → null.
-
-TOTAL RULES:
-- DO NOT sum numbers.
-- For each bill, choose the amount after to “THANH TOAN”, “Tổng”, “Total”, “Tiền hàng”.
-- If multiple candidates, choose the largest.
-- Remove formatting → return only digits.
-
-CATEGORY RULES:
-- Infer from item names (coffee, tea, food → Ăn uống).
-- Must be one of: {categories_str}
-- If can't determine → null.
-
-IMPORTANT:
-- Return ONLY a JSON array.
-- Every element must be one bill.
-- No markdown, no explanation, no extra text.
-"""
-
-    response = groq_client.chat.completions.create(
-        model="qwen/qwen3-32b",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a data extraction assistant. You ONLY respond with valid JSON array. Never write code. Never explain. Only output the JSON array."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.2,
-        max_tokens=4096,
-        top_p=0.95
-    )
-
-    raw_response = response.choices[0].message.content
-    print("Raw AI response:", raw_response)
-
-    cleaned = raw_response.strip()
-    
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-        cleaned = cleaned.strip()
-
-    match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+    match = re.search(r'\{.*\}', raw, re.DOTALL)
     if not match:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI không trả về JSON array hợp lệ. Raw: {raw_response[:200]}"
-        )
+        raise HTTPException(status_code=500, detail="AI không trả về JSON hợp lệ")
 
-    json_str = match.group()
-    json_str = json_str.replace("'", '"')
-    json_str = json_str.replace("None", "null")
-    json_str = json_str.replace("True", "true")
-    json_str = json_str.replace("False", "false")
+    result = json.loads(match.group())
 
-    try:
-        results = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Không parse được JSON: {e}")
+    # Validate category
+    data = result.get("data") or {}
+    if data.get("Category") not in ALL_CATEGORIES:
+        data["Category"] = "Khác"
+    result["data"] = data
 
-    if not isinstance(results, list):
-        results = [results]
-
-    for bill in results:
-        if bill.get("Category") not in categories:
-            bill["Category"] = "Khác"
-
-    return results
-
-
-def extract_from_image(image_bytes: bytes, content_type: str = "image/jpeg") -> list[dict]:
-    categories_str = ", ".join(f'"{c}"' for c in CATEGORIES)
-
-    # Chuyển ảnh sang base64
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-    prompt = f"""
-You are an invoice extractor. Look at this invoice image carefully.
-The image may contain MULTIPLE bills. Detect and separate each bill.
-
-OUTPUT FORMAT:
-Return ONLY a JSON array. Each element MUST follow:
-{{
-  "LocalDateTime": "YYYY-MM-DD HH:MM:SS",
-  "Total": "number only",
-  "Category": "one of the categories"
-}}
-
-LOCALDATETIME RULES:
-- Extract date & time near the top of each bill.
-- Accept formats: HH:MM DD/MM/YYYY, HH.MM DD-MM-YYYY, HH:MM, DD/MM/YYYY.
-- If only time → use today's date.
-- If only date → time = 00:00:00.
-- If missing → null.
-
-TOTAL RULES:
-- DO NOT sum numbers.
-- Find the amount after "THANH TOAN", "Tổng", "Total", "Tiền hàng".
-- If multiple candidates, choose the largest.
-- Return digits only, no formatting.
-
-CATEGORY RULES:
-- Infer from item names (coffee, tea, food → Ăn uống).
-- Must be one of: {categories_str}
-- If can't determine → null.
-
-IMPORTANT:
-- Return ONLY a JSON array.
-- No markdown, no explanation, no extra text.
-"""
-
-    response = groq_client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",  # model có vision
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a data extraction assistant. Return ONLY valid JSON array. No explanation."
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{content_type};base64,{image_b64}"
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }
-        ],
-        temperature=0.2,
-        max_tokens=4096,
-        top_p=0.95
-    )
-
-    raw_response = response.choices[0].message.content
-    print("Raw AI response:", raw_response)
-
-    # Clean response
-    cleaned = raw_response.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-        cleaned = cleaned.strip()
-
-    match = re.search(r'\[.*\]', cleaned, re.DOTALL)
-    if not match:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI không trả về JSON array hợp lệ. Raw: {raw_response[:200]}"
-        )
-
-    json_str = match.group()
-    json_str = json_str.replace("'", '"')
-    json_str = json_str.replace("None", "null")
-    json_str = json_str.replace("True", "true")
-    json_str = json_str.replace("False", "false")
-
-    try:
-        results = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Không parse được JSON: {e}")
-
-    if not isinstance(results, list):
-        results = [results]
-
-    for bill in results:
-        if bill.get("Category") not in CATEGORIES:
-            bill["Category"] = "Khác"
-
-    return results
+    return result

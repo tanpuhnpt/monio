@@ -1,10 +1,9 @@
 fastapi
 uvicorn
-easyocr
-pillow
-numpy
 groq
+pillow
 python-multipart
 python-dotenv
-SQLAlchemy
+sqlalchemy
 pymysql
+requests
