@@ -41,7 +41,7 @@ public class TransactionServiceImpl implements TransactionService {
     TransactionRepository transactionRepository;
 
     @Override
-    public List<TransactionResponse> getAllTransactions(LocalDate startDate, LocalDate endDate) {
+    public List<TransactionResponse> getAllTransactions(TransactionType type, LocalDate startDate, LocalDate endDate) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
 
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
@@ -49,7 +49,7 @@ public class TransactionServiceImpl implements TransactionService {
         DateRange dateRange = DateRange.ofCurrentMonthIfNull(startDate, endDate);
 
         return transactionRepository
-                .findAllByUserId(userId, dateRange.start(), dateRange.end(), sort)
+                .findAllByUserId(userId, type, dateRange.start(), dateRange.end(), sort)
                 .stream()
                 .map(mapper::toResponse)
                 .toList();

@@ -21,11 +21,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
         JOIN FETCH t.category
         JOIN FETCH t.wallet
         WHERE t.user.id = :userId
+        AND t.type = :type
         AND (CAST(:startDate AS timestamp) IS NULL OR t.createdAt >= :startDate)
         AND (CAST(:endDate AS timestamp) IS NULL OR t.createdAt <= :endDate)
     """)
     List<Transaction> findAllByUserId(
             @Param("userId") Long userId,
+            @Param("type") TransactionType type,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate,
             Sort sort);
