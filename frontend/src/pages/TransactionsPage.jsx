@@ -35,22 +35,41 @@ const TransactionsPage = ({ wallets = [] }) => {
   const [isExtracting, setIsExtracting] = useState(false);
   const [prefilledData, setPrefilledData] = useState(null);
 
-  const loadData = async () => {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const startDate = formatDate(startOfMonth);
-    const endDate = formatDate(endOfMonth);
+  const isSameTransaction = (left, right) => {
+    if (!left || !right) return false;
+
+    if (left.id != null && right.id != null) {
+      return String(left.id) === String(right.id);
+    }
+
+    return (
+      String(left.type || '').toUpperCase() === String(right.type || '').toUpperCase() &&
+      String(left.createdAt || '') === String(right.createdAt || '') &&
+      String(left.amount || '') === String(right.amount || '') &&
+      String(left.note || '') === String(right.note || '')
+    );
+  };
+
+  const loadData = async (recentTransaction = null) => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    // Using explicitly defined formatted dates or fallbacks
+    const formattedStart = formatDate(firstDay);
+    const formattedEnd = formatDate(lastDay);
 
     try {
-      const data = await getTransactions(startDate, endDate);
-      if (Array.isArray(data)) {
-        setTransactions(data);
-      } else if (Array.isArray(data?.transactions)) {
-        setTransactions(data.transactions);
-      } else {
-        setTransactions([]);
+      const data = await getTransactions(formattedStart, formattedEnd);
+      const fetchedTransactions = Array.isArray(data) ? data : [];
+
+      if (recentTransaction) {
+        const alreadyIncluded = fetchedTransactions.some((transaction) => isSameTransaction(transaction, recentTransaction));
+        setTransactions(alreadyIncluded ? fetchedTransactions : [recentTransaction, ...fetchedTransactions]);
+        return;
       }
+
+      setTransactions(fetchedTransactions);
     } catch (error) {
       console.error('Failed to load transactions:', error);
       setTransactions([]);
@@ -91,23 +110,26 @@ const TransactionsPage = ({ wallets = [] }) => {
   const handleSaveTransaction = async (data) => {
     try {
       const createdAt = new Date(`${data.date}T${data.time || '00:00'}:00`).toISOString();
+      const normalizedType = String(data.type || '').trim().toUpperCase();
 
-      if (data.type === 'transfer') {
-        await createTransfer({
+      let savedTransaction = null;
+
+      if (normalizedType === 'TRANSFER') {
+        savedTransaction = await createTransfer({
           amount: Number(data.amount),
           note: data.note,
           createdAt,
-          sourceWalletId: Number(data.sourceWallet),
-          destinationWalletId: Number(data.destinationWallet),
+          sourceWalletId: Number.parseInt(data.sourceWallet, 10),
+          destinationWalletId: Number.parseInt(data.destinationWallet, 10),
         });
       } else {
-        await createTransaction({
+        savedTransaction = await createTransaction({
           amount: Number(data.amount),
           note: data.note,
-          type: String(data.type).toUpperCase(),
+          type: normalizedType,
           createdAt,
-          categoryId: Number(data.category),
-          walletId: Number(data.wallet),
+          categoryId: data.categoryId == null ? null : Number.parseInt(data.categoryId, 10),
+          walletId: data.walletId == null ? null : Number.parseInt(data.walletId, 10),
         });
       }
 
@@ -115,10 +137,11 @@ const TransactionsPage = ({ wallets = [] }) => {
       setFormOpen(false);
       setEditingTransaction(null);
       setPrefilledData(null);
-      await loadData();
+      await loadData(savedTransaction);
     } catch (error) {
       console.error('Failed to create transaction:', error);
       alert('Tạo giao dịch thất bại. Vui lòng thử lại.');
+      throw error;
     }
   };
 
@@ -206,6 +229,7 @@ const TransactionsPage = ({ wallets = [] }) => {
         open={isFormOpen}
         onClose={handleCloseForm}
         onSubmit={handleSaveTransaction}
+        onTransactionAdded={loadData}
         initialData={editingTransaction}
         prefilledData={prefilledData}
         wallets={wallets}
