@@ -3,12 +3,13 @@ package com.mpt.monio.transaction.service;
 import com.mpt.monio.transaction.dto.TransactionRequest;
 import com.mpt.monio.transaction.dto.TransactionResponse;
 import com.mpt.monio.transaction.dto.TransferTransactionRequest;
+import com.mpt.monio.transaction.entity.TransactionType;
 
 import java.time.LocalDate;
 import java.util.List;
 
 public interface TransactionService {
-    List<TransactionResponse> getAllTransactions(LocalDate startDate, LocalDate endDate);
+    List<TransactionResponse> getAllTransactions(TransactionType type, LocalDate startDate, LocalDate endDate);
 
     TransactionResponse getTransaction(Long id);
 
