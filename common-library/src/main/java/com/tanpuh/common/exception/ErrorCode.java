@@ -34,7 +34,7 @@ public enum ErrorCode {
     CATEGORY_NOT_FOUND(4001, "Category not existed in this user", HttpStatus.NOT_FOUND),
     CATEGORY_ID_NULL(4002, "Category ID is required", HttpStatus.BAD_REQUEST),
 
-    // CATEGORY ERROR
+    // WALLET ERROR
     WALLET_EXISTED(5001, "Wallet already existed in this user", HttpStatus.BAD_REQUEST),
     WALLET_NOT_FOUND(5002, "Wallet not existed in this user", HttpStatus.NOT_FOUND),
     WALLET_NAME_BLANK(5003, "Wallet name is required", HttpStatus.BAD_REQUEST),
@@ -42,9 +42,8 @@ public enum ErrorCode {
     WALLET_BALANCE_NEGATIVE(5005, "Wallet balance must be greater than or equal to 0", HttpStatus.BAD_REQUEST),
     WALLET_CURRENCY_BLANK(5006, "Wallet currency is required", HttpStatus.BAD_REQUEST),
     WALLET_ID_NULL(5007, "Wallet ID is required", HttpStatus.BAD_REQUEST),
-    DESTINATION_WALLET_INVALID(5008, "Destination wallet must be different from source wallet", HttpStatus.BAD_REQUEST),
 
-    // TRANSACTION ERROR
+    // TRANSACTION ERROR,
     TRANSACTION_NOT_FOUND(6001, "Transaction not existed in this user", HttpStatus.NOT_FOUND),
     TRANSACTION_AMOUNT_NULL(6002, "Transaction amount is required", HttpStatus.BAD_REQUEST),
     TRANSACTION_AMOUNT_NEGATIVE_ZERO(6003, "Transaction amount must be greater than 0", HttpStatus.BAD_REQUEST),
@@ -53,6 +52,7 @@ public enum ErrorCode {
     TRANSACTION_TYPE_NULL(6006, "Transaction type is required", HttpStatus.BAD_REQUEST),
     TRANSACTION_DATE_NULL(6007, "Transaction date is required", HttpStatus.BAD_REQUEST),
     TRANSACTION_DATE_INVALID(6008, "Transaction date cannot be in the future", HttpStatus.BAD_REQUEST),
+    TRANSACTION_DESTINATION_WALLET_INVALID(6009, "Destination wallet must be different from source wallet", HttpStatus.BAD_REQUEST),
     ;
 
     private final int code;

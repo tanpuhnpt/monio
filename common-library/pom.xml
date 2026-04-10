@@ -10,8 +10,8 @@
     </parent>
 
     <artifactId>common-library</artifactId>
-    <name>common-service</name>
-    <description>common-service</description>
+    <name>common-library</name>
+    <description>common-library</description>
 
     <dependencies>
         <dependency>
