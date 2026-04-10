@@ -7,4 +7,10 @@ import java.util.List;
 
 public interface CategoryService {
     List<CategoryResponse> getAllCategoriesByType(CategoryType type);
+
+    List<CategoryResponse> getAllCategoriesByIds(List<Long> ids);
+
+    Boolean existsById(Long id);
+
+    CategoryResponse getCategoryById(Long id);
 }
