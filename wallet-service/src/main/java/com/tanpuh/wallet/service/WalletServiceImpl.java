@@ -1,14 +1,14 @@
 package com.tanpuh.wallet.service;
 
-import com.tanpuh.wallet.dto.WalletResponse;
+import com.tanpuh.common.enums.TransactionType;
+import com.tanpuh.wallet.dto.*;
 import com.tanpuh.common.exception.AppException;
 import com.tanpuh.common.exception.ErrorCode;
 import com.tanpuh.common.util.SecurityContext;
-import com.tanpuh.wallet.dto.CreateWalletRequest;
-import com.tanpuh.wallet.dto.UpdateWalletRequest;
 import com.tanpuh.wallet.entity.Wallet;
 import com.tanpuh.wallet.mapper.WalletMapper;
 import com.tanpuh.wallet.repo.WalletRepository;
+import jakarta.transaction.Transactional;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -83,5 +83,37 @@ public class WalletServiceImpl implements WalletService {
 
         wallet.setActive(false);
         repository.save(wallet);
+    }
+
+    @Override
+    public Boolean existsById(Long id) {
+        return repository.existsById(id);
+    }
+
+    @Override
+    @Transactional
+    public void updateBalanceByTransactionType(UpdateBalanceRequest request, boolean isReverse) {
+        boolean isDecrease;
+        if (isReverse) // case: delete (decrease: income, increase: expense)
+            isDecrease = (request.type() == TransactionType.INCOME);
+        else  // case: create (decrease: expense, increase: income)
+            isDecrease = (request.type() == TransactionType.EXPENSE);
+
+        if (isDecrease)
+            repository.decreaseBalance(request.id(), request.amount());
+        else
+            repository.increaseBalance(request.id(), request.amount());
+    }
+
+    @Override
+    @Transactional
+    public void updateBalances(TransferRequest request) {
+        repository.decreaseBalance(request.sourceWalletId(), request.amount());
+        repository.increaseBalance(request.destinationWalletId(), request.amount());
+    }
+
+    @Override
+    public List<WalletResponse> getAllWalletsByIds(List<Long> ids) {
+        return repository.findAllByIdIn(ids).stream().map(mapper::toResponse).toList();
     }
 }
