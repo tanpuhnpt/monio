@@ -148,3 +148,104 @@ Always reply in Vietnamese. Return ONLY valid JSON.
     result["data"] = data
 
     return result
+
+def generate_statistics_reply(message: str, report_data: dict, history: list) -> str:
+    """Dùng AI để phân tích report data và trả lời bằng tiếng Việt tự nhiên"""
+
+    history_text = "\n".join([
+        f"{h.role.upper()}: {h.message}" for h in history[-6:]
+    ]) or "Chưa có lịch sử."
+
+    summary           = report_data.get("summary", {})
+    expense_by_cat    = report_data.get("expense_by_category", [])
+    income_by_cat     = report_data.get("income_by_category", [])
+    expense_by_wallet = report_data.get("expense_by_wallet", [])
+    period            = report_data.get("period", {})
+
+    prompt = f"""You are a Vietnamese personal finance advisor.
+
+PERIOD: {period.get('start')} → {period.get('end')}
+
+FINANCIAL SUMMARY:
+- Tổng thu:  {summary.get('totalIncome', 0):,.0f}đ
+- Tổng chi:  {summary.get('totalExpense', 0):,.0f}đ
+- Còn lại:   {summary.get('netBalance', 0):,.0f}đ
+
+CHI TIÊU THEO DANH MỤC:
+{chr(10).join([f"- {c['name']}: {c['totalAmount']:,.0f}đ ({c['percentage']}%)" for c in expense_by_cat]) or "Không có dữ liệu"}
+
+THU NHẬP THEO DANH MỤC:
+{chr(10).join([f"- {c['name']}: {c['totalAmount']:,.0f}đ ({c['percentage']}%)" for c in income_by_cat]) or "Không có dữ liệu"}
+
+CHI TIÊU THEO VÍ:
+{chr(10).join([f"- {w['name']}: {w['totalAmount']:,.0f}đ ({w['percentage']}%)" for w in expense_by_wallet]) or "Không có dữ liệu"}
+
+CONVERSATION HISTORY:
+{history_text}
+
+USER QUESTION: "{message}"
+
+Answer the user's question in Vietnamese based on the data above.
+Then add 2-3 specific saving tips based on their spending pattern.
+Format nicely with emoji. Be friendly and concise.
+"""
+
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": "You are a helpful Vietnamese financial advisor."},
+            {"role": "user",   "content": prompt}
+        ],
+        temperature=0.3,
+        max_tokens=800
+    )
+
+    return response.choices[0].message.content
+
+# ── Chat Report APIs ───────────────────────────────────────────────
+def detect_statistics_intent(message: str) -> dict:
+    """
+    Phát hiện intent thống kê và trích xuất tháng/năm từ message
+    Returns: { is_stats: bool, month: int, year: int, tx_type: str }
+    """
+    now = datetime.now()
+
+    prompt = f"""Extract time range from this Vietnamese message about expense statistics.
+
+Message: "{message}"
+Current date: {now.strftime("%Y-%m-%d")}
+
+Return ONLY JSON:
+{{
+  "is_statistics": true | false,
+  "month": number or null,
+  "year": number or null,
+  "tx_type": "EXPENSE" | "INCOME" | "BOTH",
+  "specific_category": "category name or null"
+}}
+
+Rules:
+- is_statistics = true nếu user hỏi về thống kê, báo cáo, đã chi bao nhiêu, tháng này chi gì
+- "tháng này" → month={now.month}, year={now.year}
+- "tháng 12" → month=12, year={now.year}
+- "tháng 12 năm ngoái" → month=12, year={now.year - 1}
+- tx_type = "EXPENSE" nếu hỏi về chi tiêu, "INCOME" nếu hỏi thu nhập, "BOTH" nếu hỏi cả hai
+- specific_category: nếu hỏi về danh mục cụ thể như "ăn uống", "di chuyển"
+"""
+
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": "Return ONLY valid JSON."},
+            {"role": "user",   "content": prompt}
+        ],
+        temperature=0,
+        max_tokens=150
+    )
+
+    raw = response.choices[0].message.content.strip()
+    match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if not match:
+        return {"is_statistics": False}
+
+    return json.loads(match.group())

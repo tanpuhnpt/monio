@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import Base, engine
-from app.api import chat
+from app.api import chat, ocr
 
 Base.metadata.create_all(bind=engine)
 
@@ -15,6 +15,7 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, tags=["Chat"])
+app.include_router(ocr.router, tags=["OCR"])
 
 @app.get("/")
 def root():
