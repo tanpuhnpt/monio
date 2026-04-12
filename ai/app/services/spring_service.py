@@ -193,3 +193,56 @@ def save_transaction(token: str, pending) -> bool:
     except Exception as e:
         print(f"Lỗi kết nối Spring Boot: {e}")
         return False
+
+def get_transactions(token: str, tx_type: str = None,
+                     start_date: str = None, end_date: str = None) -> list:
+    """
+    GET /transactions?type=EXPENSE&startDate=...&endDate=...
+    Returns: [{ id, amount, note, createdAt, type, category, wallet }]
+    """
+    params = {}
+    if tx_type:
+        params["type"]      = tx_type
+    if start_date:
+        params["startDate"] = start_date
+    if end_date:
+        params["endDate"]   = end_date
+
+    try:
+        res = requests.get(
+            f"{SPRING_BOOT_API_URL}/transactions",
+            params=params,
+            headers=_headers(token),
+            timeout=10
+        )
+        if res.status_code == 200:
+            return res.json()
+        print(f"Lỗi get transactions: {res.status_code} - {res.text}")
+        return []
+    except Exception as e:
+        print(f"Lỗi kết nối: {e}")
+        return []
+
+
+def get_last_3_months_transactions(token: str) -> dict:
+    """Lấy transactions 3 tháng gần nhất để phân tích xu hướng"""
+    from datetime import date
+    import calendar
+
+    today  = date.today()
+    result = {}
+
+    for i in range(3):
+        # Tính tháng i tháng trước
+        month = today.month - i
+        year  = today.year
+        if month <= 0:
+            month += 12
+            year  -= 1
+
+        start, end = _month_range(year, month)
+        txs = get_transactions(token, tx_type="EXPENSE",
+                               start_date=start, end_date=end)
+        result[f"{year}-{month:02d}"] = txs
+
+    return result
