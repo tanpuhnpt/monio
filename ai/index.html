@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monio AI Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0e0f11;--surface:#16181c;--surface2:#1e2128;--border:#2a2d35;
+    --accent:#7fffb2;--accent2:#4fa8ff;--text:#e8eaf0;--muted:#6b7280;
+    --user-bg:#1a2a1f;--ai-bg:#1a1e2a;--danger:#ff6b6b;--warn:#ffd166;
+  }
+  body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+  .header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;gap:12px;flex-wrap:wrap}
+  .header-left{display:flex;align-items:center;gap:12px}
+  .logo-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 12px var(--accent)}50%{opacity:.6;box-shadow:0 0 4px var(--accent)}}
+  .logo-text{font-size:18px;font-weight:800;letter-spacing:-.5px}
+  .logo-text span{color:var(--accent)}
+  .field-group{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px}
+  .field-label{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;white-space:nowrap}
+  .field-input{background:transparent;border:none;outline:none;color:var(--accent2);font-family:'DM Mono',monospace;font-size:13px}
+  #apiUrlInput{width:190px}
+  #userIdInput{width:40px;text-align:center}
+
+  .main{display:flex;flex:1;overflow:hidden}
+
+  /* Sidebar */
+  .sidebar{width:260px;border-right:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0}
+  .sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between;align-items:center}
+  .refresh-btn{background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:4px;padding:3px 10px;font-size:11px;font-family:'DM Mono',monospace;transition:all .2s}
+  .refresh-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .history-list{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:3px}
+  .history-list::-webkit-scrollbar{width:4px}
+  .history-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .history-item{padding:9px 12px;border-radius:8px;border:1px solid transparent;transition:all .15s}
+  .history-item:hover{background:var(--surface2);border-color:var(--border)}
+  .history-role{font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+  .history-role.user{color:var(--accent)}
+  .history-role.ai{color:var(--accent2)}
+  .history-msg{font-size:12px;color:var(--muted);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .history-time{font-size:10px;font-family:'DM Mono',monospace;color:#3a3d45;margin-top:3px}
+  .empty-sidebar{padding:24px 16px;text-align:center;font-size:12px;font-family:'DM Mono',monospace;color:#2e3140;line-height:1.8}
+
+  /* Chat */
+  .chat-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .messages{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+  .messages::-webkit-scrollbar{width:4px}
+  .messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  .welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px;opacity:.5;text-align:center}
+  .welcome-icon{font-size:44px}
+  .welcome h2{font-size:20px;font-weight:800;letter-spacing:-.5px}
+  .welcome p{font-size:13px;color:var(--muted);font-family:'DM Mono',monospace;line-height:1.7}
+  .suggestions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:4px}
+  .chip{padding:6px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--muted);cursor:pointer;transition:all .2s;font-family:'DM Mono',monospace}
+  .chip:hover{border-color:var(--accent);color:var(--accent);background:rgba(127,255,178,.05)}
+
+  /* Bubbles */
+  .bubble-row{display:flex;gap:12px;align-items:flex-start;animation:slideUp .25s ease}
+  .bubble-row.user{flex-direction:row-reverse}
+  @keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .avatar{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;font-weight:700}
+  .avatar.user{background:rgba(127,255,178,.12);border:1px solid rgba(127,255,178,.25);color:var(--accent);font-family:'DM Mono',monospace;font-size:11px}
+  .avatar.ai{background:rgba(79,168,255,.12);border:1px solid rgba(79,168,255,.25)}
+  .bubble{max-width:66%;padding:12px 16px;border-radius:12px;font-size:14px;line-height:1.65}
+  .bubble.user{background:var(--user-bg);border:1px solid rgba(127,255,178,.18);border-top-right-radius:4px}
+  .bubble.ai{background:var(--ai-bg);border:1px solid rgba(79,168,255,.18);border-top-left-radius:4px}
+  .bubble-time{font-size:10px;font-family:'DM Mono',monospace;color:#3a3d45;margin-top:5px}
+
+  /* Intent badge */
+  .intent-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+  .intent-add{background:rgba(127,255,178,.1);color:var(--accent);border:1px solid rgba(127,255,178,.3)}
+  .intent-query{background:rgba(79,168,255,.1);color:var(--accent2);border:1px solid rgba(79,168,255,.3)}
+  .intent-missing{background:rgba(255,209,102,.1);color:var(--warn);border:1px solid rgba(255,209,102,.3)}
+  .intent-scope{background:rgba(107,114,128,.1);color:var(--muted);border:1px solid rgba(107,114,128,.3)}
+  .intent-error{background:rgba(255,107,107,.1);color:var(--danger);border:1px solid rgba(255,107,107,.3)}
+
+  /* Expense card */
+  .expense-card{margin-top:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:'DM Mono',monospace;font-size:12px}
+  .expense-card-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:8px}
+  .expense-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)}
+  .expense-row:last-child{border-bottom:none}
+  .expense-key{color:var(--muted)}
+  .expense-val{color:var(--text);font-weight:500}
+
+  /* Anomaly warning */
+  .anomaly-card{margin-top:10px;background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--danger)}
+
+  /* Typing */
+  .typing{display:flex;align-items:center;gap:4px;padding:14px 16px;background:var(--ai-bg);border:1px solid rgba(79,168,255,.18);border-radius:12px;border-top-left-radius:4px;width:fit-content}
+  .dot{width:6px;height:6px;background:var(--accent2);border-radius:50%;animation:bounce 1.2s ease-in-out infinite}
+  .dot:nth-child(2){animation-delay:.2s}
+  .dot:nth-child(3){animation-delay:.4s}
+  @keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-6px);opacity:1}}
+
+  /* Input */
+  .input-area{padding:14px 24px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0}
+  .input-row{display:flex;gap:10px;align-items:flex-end}
+  .input-box{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--text);font-family:'Syne',sans-serif;font-size:14px;resize:none;outline:none;transition:border-color .2s;min-height:48px;max-height:120px;line-height:1.5}
+  .input-box::placeholder{color:var(--muted)}
+  .input-box:focus{border-color:var(--accent)}
+  .send-btn{width:48px;height:48px;background:var(--accent);border:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;color:var(--bg)}
+  .send-btn:hover{background:#5ff094;transform:scale(1.05)}
+  .send-btn:active{transform:scale(.97)}
+  .send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .send-btn svg{width:18px;height:18px}
+  .input-hint{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:8px;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo-dot"></div>
+    <div class="logo-text">monio<span>AI</span></div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <div class="field-group">
+      <span class="field-label">API</span>
+      <input class="field-input" id="apiUrlInput" value="http://localhost:8000"/>
+    </div>
+    <div class="field-group">
+      <span class="field-label">User ID</span>
+      <input class="field-input" id="userIdInput" type="number" value="1" min="1"/>
+    </div>
+    <div class="field-group">
+      <span class="field-label">Token</span>
+      <input class="field-input" id="tokenInput" type="password" placeholder="Nhập token JWT"/>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      Lịch sử
+      <button class="refresh-btn" onclick="loadHistory()">↻ Tải</button>
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="empty-sidebar">Nhấn ↻ Tải<br>để xem lịch sử</div>
+    </div>
+  </div>
+
+  <div class="chat-area">
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome">
+        <div class="welcome-icon">💬</div>
+        <h2>Ghi chi tiêu tự nhiên</h2>
+        <p>Nhập chi tiêu bằng ngôn ngữ tự nhiên<br>AI sẽ tự động trích xuất và lưu lại</p>
+        <div class="suggestions">
+          <div class="chip" onclick="fillInput(this)">Hôm nay ăn sáng 50k</div>
+          <div class="chip" onclick="fillInput(this)">Grab về nhà 35k</div>
+          <div class="chip" onclick="fillInput(this)">Mua sách lập trình 280k</div>
+          <div class="chip" onclick="fillInput(this)">Tháng này tôi tiêu bao nhiêu?</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <textarea class="input-box" id="inputBox"
+          placeholder='Ví dụ: "Hôm nay ăn trưa bún bò 60k"'
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+      <div class="input-hint">
+        <span>Enter gửi · Shift+Enter xuống dòng</span>
+        <span id="statusText">Sẵn sàng</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let isLoading = false;
+
+  const getApi = () => document.getElementById('apiUrlInput').value.replace(/\/$/, '');
+  const getUid = () => parseInt(document.getElementById('userIdInput').value) || 1;
+  const getToken = () => document.getElementById('tokenInput').value.trim();
+
+  // Load token từ localStorage khi page load
+  window.addEventListener('load', () => {
+    let savedToken = localStorage.getItem('monioToken');
+    if (!savedToken) {
+      // Set token mặc định nếu chưa có
+      savedToken = 'eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJtb25pbyIsInN1YiI6IjMiLCJleHAiOjE3NzU0OTIyMDksImlhdCI6MTc3NTQ4ODYwOSwianRpIjoiNjI5OWQ1NGUtOTI4Mi00YjZjLWI0MDktNmU0NTFhZjliNWUxIn0.ns9Dzv_rIPbdCdsP9po-X3gxZQNCzy7OzCrpNJuw4r2uSzvVA1-oHwL5HGkWKMOGrmoi5Ruk5FJ0XYiM0kgIdQ';
+      localStorage.setItem('monioToken', savedToken);
+    }
+    document.getElementById('tokenInput').value = savedToken;
+  });
+
+  // Lưu token khi thay đổi
+  document.getElementById('tokenInput').addEventListener('input', () => {
+    const token = getToken();
+    if (token) {
+      localStorage.setItem('monioToken', token);
+    } else {
+      localStorage.removeItem('monioToken');
+    }
+  });
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+
+  function fillInput(el) {
+    document.getElementById('welcome')?.remove();
+    document.getElementById('inputBox').value = el.textContent;
+    document.getElementById('inputBox').focus();
+  }
+
+  function setStatus(text, color = 'var(--muted)') {
+    const el = document.getElementById('statusText');
+    el.textContent = text;
+    el.style.color = color;
+  }
+
+  function scrollBottom() {
+    const m = document.getElementById('messages');
+    m.scrollTop = m.scrollHeight;
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit' })
+           + ' ' + d.toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit' });
+    } catch { return ''; }
+  }
+
+  function fmtMoney(val) {
+    if (val == null) return '—';
+    return Number(val).toLocaleString('vi-VN') + 'đ';
+  }
+
+  // Badge theo intent
+  function intentBadge(intent) {
+    const map = {
+      add_expense:  ['intent-add',     '✦ Chi tiêu'],
+      add_income:   ['intent-add',     '⬆ Thu nhập'],
+      query:        ['intent-query',   '? Truy vấn'],
+      missing_info: ['intent-missing', '! Thiếu thông tin'],
+      out_of_scope: ['intent-scope',   '— Ngoài phạm vi'],
+    };
+    const [cls, label] = map[intent] || ['intent-error', '✕ Lỗi'];
+    return `<span class="intent-badge ${cls}">${label}</span>`;
+  }
+
+  // Card chi tiết chi tiêu
+  function expenseCard(data) {
+    if (!data || !data.Total) return '';
+    const rows = [
+      ['Danh mục',  data.Category],
+      ['Số tiền',   fmtMoney(data.Total)],
+      ['Thời gian', data.LocalDateTime],
+      ['Ghi chú',   data.Note],
+    ].filter(([, v]) => v);
+    if (!rows.length) return '';
+    return `
+      <div class="expense-card">
+        <div class="expense-card-title">✦ Đã ghi nhận</div>
+        ${rows.map(([k, v]) => `
+          <div class="expense-row">
+            <span class="expense-key">${k}</span>
+            <span class="expense-val">${v}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  function addBubble(role, html, time = '') {
+    document.getElementById('welcome')?.remove();
+    const msgs = document.getElementById('messages');
+    const row = document.createElement('div');
+    row.className = `bubble-row ${role}`;
+    row.innerHTML = `
+      <div class="avatar ${role}">${role === 'user' ? 'U' : '🤖'}</div>
+      <div>
+        <div class="bubble ${role}">${html}</div>
+        ${time ? `<div class="bubble-time">${time}</div>` : ''}
+      </div>`;
+    msgs.appendChild(row);
+    scrollBottom();
+  }
+
+  function addTyping() {
+    document.getElementById('welcome')?.remove();
+    const msgs = document.getElementById('messages');
+    const row = document.createElement('div');
+    row.className = 'bubble-row ai';
+    row.id = 'typingRow';
+    row.innerHTML = `
+      <div class="avatar ai">🤖</div>
+      <div class="typing">
+        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+      </div>`;
+    msgs.appendChild(row);
+    scrollBottom();
+  }
+
+  function removeTyping() { document.getElementById('typingRow')?.remove(); }
+
+  // ── Send ──────────────────────────────────────────────────
+  async function sendMessage() {
+    if (isLoading) return;
+    const input = document.getElementById('inputBox');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+    isLoading = true;
+    document.getElementById('sendBtn').disabled = true;
+    setStatus('Đang gửi...', 'var(--accent2)');
+
+    const now = fmtTime(new Date().toISOString());
+    addBubble('user', text, now);
+    addTyping();
+
+    try {
+      const token = getToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${getApi()}/chat`, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          message: text,
+          user_id: getUid(),
+          spending_context: [],      // Spring Boot sẽ gửi data thật vào đây
+          recent_transactions: []
+        })
+      });
+
+      removeTyping();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        addBubble('ai',
+          `<span class="intent-badge intent-error">✕ Lỗi ${res.status}</span><br>${err.detail || 'Có lỗi xảy ra'}`,
+          fmtTime(new Date().toISOString())
+        );
+        setStatus('Lỗi', 'var(--danger)');
+        return;
+      }
+
+      // Response: { intent, reply, data }
+      const data = await res.json();
+      console.log('Response:', data);
+
+      // Build bubble content
+      let content = intentBadge(data.intent) + '<br>' + (data.reply || '');
+
+      // Nếu add_expense hoặc add_income → hiện card
+      if ((data.intent === 'add_expense' || data.intent === 'add_income') && data.data) {
+        content += expenseCard(data.data);
+      }
+
+      // Nếu reply có cảnh báo anomaly (⚠️)
+      if (data.reply && data.reply.includes('⚠️')) {
+        const parts = data.reply.split('\n\n⚠️');
+        content = intentBadge(data.intent) + '<br>' + parts[0];
+        if ((data.intent === 'add_expense' || data.intent === 'add_income') && data.data) {
+          content += expenseCard(data.data);
+        }
+        if (parts[1]) {
+          content += `<div class="anomaly-card">⚠️ ${parts[1]}</div>`;
+        }
+      }
+
+      addBubble('ai', content, fmtTime(new Date().toISOString()));
+      setStatus('Xong ✓', 'var(--accent)');
+      setTimeout(() => setStatus('Sẵn sàng', 'var(--muted)'), 2000);
+
+    } catch (err) {
+      removeTyping();
+      addBubble('ai',
+        `<span class="intent-badge intent-error">✕ Kết nối thất bại</span><br>Không thể kết nối tới <code style="font-family:monospace;color:var(--accent2)">${getApi()}</code>`,
+        fmtTime(new Date().toISOString())
+      );
+      setStatus('Lỗi kết nối', 'var(--danger)');
+    } finally {
+      isLoading = false;
+      document.getElementById('sendBtn').disabled = false;
+      document.getElementById('inputBox').focus();
+    }
+  }
+
+  // ── Load history ─────────────────────────────────────────
+  // Dùng GET /history/{user_id} — 1 endpoint, đã có role user/assistant
+  async function loadHistory() {
+    const uid  = getUid();
+    const api  = getApi();
+    const list = document.getElementById('historyList');
+    list.innerHTML = `<div class="empty-sidebar">Đang tải...</div>`;
+
+    try {
+      const res = await fetch(`${api}/history/${uid}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      // Response: [{ id, user_id, role, message, created_at }]
+      const items = await res.json();
+
+      if (!items.length) {
+        list.innerHTML = `<div class="empty-sidebar">Chưa có lịch sử</div>`;
+        return;
+      }
+
+      list.innerHTML = items.map(item => `
+        <div class="history-item">
+          <div class="history-role ${item.role === 'user' ? 'user' : 'ai'}">
+            ${item.role === 'user' ? '→ Bạn' : '← AI'}
+          </div>
+          <div class="history-msg">${item.message}</div>
+          <div class="history-time">${fmtTime(item.created_at)}</div>
+        </div>
+      `).join('');
+
+    } catch (err) {
+      list.innerHTML = `<div class="empty-sidebar">Lỗi tải lịch sử<br><span style="color:var(--danger)">${err.message}</span></div>`;
+    }
+  }
+</script>
+</body>
+</html>

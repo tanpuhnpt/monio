@@ -1,5 +1,22 @@
 from fastapi import FastAPI
-from app.api import ocr
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.database import Base, engine
+from app.api import chat, ocr
 
-app = FastAPI(title="Invoice OCR API", version="1.0")
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Monio AI Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat.router, tags=["Chat"])
 app.include_router(ocr.router, tags=["OCR"])
+
+@app.get("/")
+def root():
+    return {"message": "Monio AI Service đang chạy!"}
