@@ -401,16 +401,26 @@ If not enough data (only 1 month), still analyze what you have and note the limi
     return response.choices[0].message.content
 
 def detect_report_intent(message: str) -> dict:
-    """
-    Phân loại rõ 3 loại intent liên quan đến báo cáo:
-    - query_transactions : hỏi giao dịch cụ thể (ngày, tuần)
-    - statistics         : thống kê tổng hợp (tháng, danh mục)
-    - analysis           : phân tích xu hướng, dự đoán, gợi ý
-    - none               : không liên quan báo cáo
-    """
     now   = datetime.now()
     today = now.strftime("%Y-%m-%d")
 
+    # ── Safeguard Python — chạy TRƯỚC khi gọi AI ──────────────
+    # Nếu message có số tiền + hành động → chắc chắn là add_expense/income
+    has_amount = bool(re.search(
+        r'\d+\s*k\b|\d+\s*nghìn|\d+\s*triệu|\d+\s*đồng|\b\d{5,}\b',
+        message, re.IGNORECASE
+    ))
+    action_words = [
+        "ăn", "mua", "uống", "đi", "trả", "nhận", "lương", "thưởng",
+        "chi", "tiêu", "nạp", "đổ", "cà phê", "cafe", "grab", "taxi",
+        "xăng", "sách", "quần", "áo", "giày", "điện", "nước", "net"
+    ]
+    has_action = any(w in message.lower() for w in action_words)
+
+    if has_amount and has_action:
+        return {"intent": "none"}
+
+    # ── Gọi AI chỉ khi không có số tiền ──────────────────────
     prompt = f"""Classify this Vietnamese financial message into exactly ONE category.
 
 Message: "{message}"
@@ -426,42 +436,36 @@ Return ONLY JSON:
   "tx_type": "EXPENSE | INCOME | BOTH"
 }}
 
-## CLASSIFICATION RULES (pick the BEST match):
+## CRITICAL: Messages with money amounts (10k, 50k, 1 triệu...) + action verbs
+are ALWAYS "none". Never classify them as query_transactions.
 
-### query_transactions
-User asks about SPECIFIC transactions in a specific short time range.
-Keywords: "ngày X", "hôm nay chi gì", "hôm qua mua gì", "tuần này mua gì",
-          "giao dịch ngày", "tôi đã chi gì ngày", "liệt kê"
-→ start_date = end_date = that specific date (YYYY-MM-DD)
-→ Reply should be a SHORT LIST of transactions
+### query_transactions — NO amount, asking WHAT happened
+- "Hôm nay tôi chi gì?" → query_transactions
+- "Ngày 6/4 tôi mua gì?" → query_transactions
+- "Hôm qua giao dịch gì?" → query_transactions
 
-### statistics  
-User asks for a SUMMARY/TOTAL for a period (usually a month).
-Keywords: "tháng này chi bao nhiêu", "thống kê", "tổng chi", "tháng X chi gì",
-          "tháng này tôi đã chi", "chi tiêu tháng", "báo cáo tháng"
-→ month + year extracted from message
-→ Reply should show totals by category
+### statistics — asking for TOTALS for a month
+- "Tháng này chi bao nhiêu?" → statistics
+- "Thống kê tháng 3" → statistics
+- "Tháng này tôi đã chi những gì?" → statistics
 
-### analysis
-User asks for TREND ANALYSIS, PREDICTION, or ADVICE.
-Keywords: "phân tích", "dự đoán", "xu hướng", "tháng tới chi bao nhiêu",
-          "tôi có đang chi hợp lý không", "gợi ý tiết kiệm", "AI thấy thế nào",
-          "cải thiện tài chính", "so sánh các tháng"
-→ Requires multi-month data
-→ Reply should be deep analysis + prediction
+### analysis — asking for TRENDS or PREDICTION
+- "Phân tích chi tiêu của tôi" → analysis
+- "Tháng tới tôi chi bao nhiêu?" → analysis
+- "Tôi có đang chi hợp lý không?" → analysis
+- "AI thấy chi tiêu tôi thế nào?" → analysis
 
-### none
-Not related to reports at all → handle as normal chat
+### none — everything else
+- Greetings, confirmations, cancellations
+- Anything with a money amount
 
 ## DATE EXTRACTION:
 - "hôm nay" → start_date = end_date = "{today}"
-- "hôm qua" → start_date = end_date = yesterday
-- "ngày 6/4/2026" → start_date = end_date = "2026-04-06"
-- "tuần này" → start_date = Monday of current week, end_date = "{today}"
-- "tháng này" → month = {now.month}, year = {now.year}
-- "tháng 12" → month = 12, year = {now.year}
-
-IMPORTANT: "ngày X tôi chi gì" is ALWAYS query_transactions, NEVER analysis.
+- "hôm qua" → start_date = end_date = "{(now.replace(day=now.day-1)).strftime('%Y-%m-%d') if now.day > 1 else today}"
+- "ngày 6/4/2026" → "2026-04-06"
+- "tuần này" → start of this week to "{today}"
+- "tháng này" → month={now.month}, year={now.year}
+- "tháng 12" → month=12, year={now.year}
 """
 
     response = groq_client.chat.completions.create(
@@ -475,10 +479,23 @@ IMPORTANT: "ngày X tôi chi gì" is ALWAYS query_transactions, NEVER analysis.
     )
 
     raw   = response.choices[0].message.content.strip()
+    print(f"detect_report_intent raw: {raw}")
+
     match = re.search(r'\{.*\}', raw, re.DOTALL)
     if not match:
         return {"intent": "none"}
-    return json.loads(match.group())
+
+    try:
+        result = json.loads(match.group())
+    except json.JSONDecodeError:
+        return {"intent": "none"}
+
+    # ── Double-check safeguard sau khi AI trả về ───────────────
+    if result.get("intent") in ("query_transactions", "statistics", "analysis"):
+        if has_amount and has_action:
+            result["intent"] = "none"
+
+    return result
 
 def reply_transaction_list(message: str, transactions: list) -> str:
     """Trả lời ngắn gọn danh sách giao dịch theo ngày"""
