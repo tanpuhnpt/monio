@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -7,7 +7,7 @@ from app.services.ai_service import (
     classify_and_reply, get_category_id,
     generate_statistics_reply,  # report
     analyze_and_predict, # analysis
-    detect_report_intent,        # 1 hàm thay vì 2
+    detect_report_intent,      
     reply_transaction_list 
 )
 from app.services.db_service import (
@@ -20,12 +20,14 @@ from app.services.spring_service import (
     get_full_report, _month_range, _current_month_range, # report
     get_transactions, get_last_3_months_transactions # analysis
 )
+from app.services.voice_service import transcribe_audio, validate_voice_input
 from datetime import datetime
 
 router = APIRouter()
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, db: Session = Depends(get_db)):
+# @router.post("/chat", response_model=ChatResponse)
+# async def chat(req: ChatRequest, db: Session = Depends(get_db)):
+async def _process_chat(req: ChatRequest, db: Session) -> ChatResponse:
 
     user_id = get_user_id_from_token(req.token)
     if not user_id:
@@ -152,3 +154,58 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
 @router.get("/history/{user_id}", response_model=list[HistoryItem])
 def get_chat_history(user_id: int, limit: int = 50, db: Session = Depends(get_db)):
     return get_full_history(db, user_id, limit)
+
+
+'''
+    Voice input validation logic:
+'''
+# ── /chat dùng lại _process_chat ─────────────────────────────
+@router.post("/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest, db: Session = Depends(get_db)):
+    return await _process_chat(req, db)
+
+
+# ── /voice-chat endpoint mới ──────────────────────────────────
+@router.post("/voice-chat")
+async def voice_chat(
+    token: str        = Form(...),
+    audio: UploadFile = File(...)
+):
+    # 1. Đọc audio
+    audio_bytes = await audio.read()
+
+    # 2. Transcribe audio → text
+    try:
+        text = transcribe_audio(
+            audio_bytes  = audio_bytes,
+            filename     = audio.filename,       # tên file FE gửi lên
+            content_type = audio.content_type    # MIME type
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code = 400,
+            detail      = f"Lỗi nhận dạng giọng nói: {e}"
+        )
+
+    # 3. Validate — lọc noise, tục, ngoài lề
+    validation = validate_voice_input(text)
+    if not validation["valid"]:
+        return {
+            "intent":           "rejected",
+            "reply":            validation["reason"],
+            "transcribed_text": text,
+            "data":             None
+        }
+
+    # 4. Xử lý như chat thường
+    from app.core.database import SessionLocal
+    from app.schemas.chat import ChatRequest as CR
+
+    db  = SessionLocal()
+    req = CR(token=token, message=text)
+
+    try:
+        result = await _process_chat(req, db)
+        return {**result.dict(), "transcribed_text": text}
+    finally:
+        db.close()

@@ -7,3 +7,6 @@ python-dotenv
 sqlalchemy
 pymysql
 requests
+noisereduce
+pydub
+numpy
