@@ -1,13 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
+  PieChart,
+  Pie,
+  Cell,
   Tooltip,
-  CartesianGrid,
+  Legend,
 } from 'recharts';
+import {
+  getReportByCategory,
+  getReportByWallet,
+  getReportSummary,
+} from '../services/reportService.js';
 
 const currencyFormatter = new Intl.NumberFormat('vi-VN', {
   style: 'currency',
@@ -15,56 +19,375 @@ const currencyFormatter = new Intl.NumberFormat('vi-VN', {
   maximumFractionDigits: 0,
 });
 
+const CHART_COLORS = [
+  '#4f46e5', // indigo
+  '#0d9488', // teal
+  '#e11d48', // rose
+  '#f59e0b', // amber
+  '#a855f7', // purple
+  '#06b6d4', // cyan
+  '#ec4899', // pink
+  '#6366f1', // slate indigo
+];
+
 const formatCurrency = (value = 0) => currencyFormatter.format(Math.round(Math.abs(value)) || 0);
 
-const ReportsPage = ({ transactions = [], wallets = [] }) => {
+const getCurrentMonthRange = () => {
+  const now = new Date();
+
+  return {
+    startDate: new Date(now.getFullYear(), now.getMonth(), 1),
+    endDate: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+  };
+};
+
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getCurrentMonthStartDate = () => {
+  const now = new Date();
+  return formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
+};
+
+const getTodayDate = () => formatDate(new Date());
+
+const normalizeReportType = (value) => (value === 'income' ? 'INCOME' : 'EXPENSE');
+
+const resolveReportItems = (data) => {
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  const arrayCandidates = [
+    data?.items,
+    data?.data,
+    data?.results,
+    data?.reports,
+    data?.rows,
+    data?.breakdown,
+    data?.categories,
+    data?.wallets,
+    data?.summary,
+    data?.summary?.items,
+    data?.summary?.data,
+    data?.summary?.results,
+    data?.summary?.reports,
+    data?.summary?.rows,
+    data?.summary?.breakdown,
+  ];
+
+  for (const candidate of arrayCandidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (data && typeof data === 'object') {
+    const entries = Object.entries(data)
+      .filter(([key, value]) => {
+        if (['summary', 'data', 'meta', 'pagination', 'pageInfo'].includes(key)) {
+          return false;
+        }
+        return typeof value === 'number' || Array.isArray(value) || (value && typeof value === 'object');
+      })
+      .map(([key, value]) => {
+        if (typeof value === 'number') {
+          return { value: key, label: key, total: value, count: 0 };
+        }
+
+        if (value && typeof value === 'object') {
+          return {
+            value: String(value.value ?? value.id ?? key),
+            label: String(value.label ?? value.name ?? key),
+            ...value,
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+    if (entries.length > 0) {
+      return entries;
+    }
+  }
+
+  return [];
+};
+
+const resolveReportLabel = (item, groupBy, walletLookup) => {
+  if (typeof item?.label === 'string' && item.label.trim()) {
+    return item.label;
+  }
+
+  if (typeof item?.name === 'string' && item.name.trim()) {
+    return item.name;
+  }
+
+  if (groupBy === 'wallet') {
+    const walletName = walletLookup.get(String(item?.walletId ?? item?.id ?? item?.value ?? ''));
+    if (walletName) {
+      return walletName;
+    }
+  }
+
+  if (groupBy === 'category') {
+    if (typeof item?.categoryName === 'string' && item.categoryName.trim()) {
+      return item.categoryName;
+    }
+    if (typeof item?.category === 'string' && item.category.trim()) {
+      return item.category;
+    }
+  }
+
+  if (groupBy === 'wallet') {
+    if (typeof item?.walletName === 'string' && item.walletName.trim()) {
+      return item.walletName;
+    }
+    if (typeof item?.wallet === 'string' && item.wallet.trim()) {
+      return item.wallet;
+    }
+  }
+
+  return 'Khác';
+};
+
+const normalizeReportRows = (data, groupBy, walletLookup) => {
+  const items = resolveReportItems(data);
+
+  return items
+    .map((item, index) => {
+      const value = String(
+        item?.value ?? item?.id ?? item?.categoryId ?? item?.walletId ?? item?.name ?? index
+      );
+      const total = Number(
+        item?.totalAmount ?? item?.total ?? item?.amount ?? item?.sum ?? item?.valueAmount ?? 0
+      );
+
+      return {
+        value,
+        label: resolveReportLabel(item, groupBy, walletLookup),
+        total: Math.abs(Number.isNaN(total) ? 0 : total),
+      };
+    })
+    .filter((item) => item.label || item.total);
+};
+
+const getSummaryMetric = (summary, typeKey, metricKeys) => {
+  const candidates = [
+    summary?.[typeKey],
+    summary?.[typeKey.toLowerCase()],
+    summary?.summary?.[typeKey],
+    summary?.summary?.[typeKey.toLowerCase()],
+    summary?.data?.[typeKey],
+    summary?.data?.[typeKey.toLowerCase()],
+    summary?.report?.[typeKey],
+    summary?.report?.[typeKey.toLowerCase()],
+    summary,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
+    for (const metricKey of metricKeys) {
+      const value = candidate[metricKey];
+      if (typeof value === 'number' && !Number.isNaN(value)) {
+        return value;
+      }
+
+      const parsedValue = Number(value);
+      if (!Number.isNaN(parsedValue)) {
+        return parsedValue;
+      }
+    }
+  }
+
+  return null;
+};
+
+const normalizeTransactionType = (value) => String(value || '').trim().toUpperCase();
+
+const parseDateInputValue = (value) => {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const isTransactionInRange = (transaction, startDate, endDate) => {
+  const dateString = transaction?.createdAt;
+  if (!dateString) return false;
+
+  // Force UTC parsing: "2026-04-09 03:07:00" -> "2026-04-09T03:07:00Z"
+  let utcString = String(dateString).trim().replace(' ', 'T');
+  if (!utcString.endsWith('Z')) {
+    utcString += 'Z';
+  }
+  const parsedDate = new Date(utcString);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return false;
+  }
+
+  const start = parseDateInputValue(startDate);
+  const end = parseDateInputValue(endDate);
+
+  if (start && parsedDate < start) {
+    return false;
+  }
+
+  if (end) {
+    const endOfDay = new Date(end);
+    endOfDay.setHours(23, 59, 59, 999);
+    if (parsedDate > endOfDay) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const getTransactionLabel = (transaction, groupBy, walletLookup) => {
+  if (groupBy === 'wallet') {
+    const walletId = String(transaction?.wallet?.id ?? transaction?.walletId ?? transaction?.wallet ?? '');
+    return walletLookup.get(walletId) || transaction?.wallet?.name || 'Ví chưa xác định';
+  }
+
+  return transaction?.category?.name || transaction?.category || 'Khác';
+};
+
+const buildReportRowsFromTransactions = (transactions, groupBy, walletLookup, type, startDate, endDate) => {
+  const map = new Map();
+
+  transactions.forEach((transaction) => {
+    const normalizedType = normalizeTransactionType(transaction.type);
+    if (normalizedType !== type) {
+      return;
+    }
+
+    if (!isTransactionInRange(transaction, startDate, endDate)) {
+      return;
+    }
+
+    const key =
+      groupBy === 'wallet'
+        ? String(transaction?.wallet?.id ?? transaction?.walletId ?? transaction?.wallet ?? 'unassigned')
+        : String(transaction?.category?.id ?? transaction?.categoryId ?? transaction?.category ?? 'Khác');
+
+    const label = getTransactionLabel(transaction, groupBy, walletLookup);
+
+    if (!map.has(key)) {
+      map.set(key, {
+        value: key,
+        label,
+        total: 0,
+        count: 0,
+      });
+    }
+
+    const entry = map.get(key);
+    entry.total += Math.abs(Number(transaction.amount) || 0);
+    entry.count += 1;
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.total - a.total);
+};
+
+const buildSummaryFromTransactions = (transactions, type, startDate, endDate) => {
+  return transactions.reduce(
+    (acc, transaction) => {
+      const normalizedType = normalizeTransactionType(transaction.type);
+      if (normalizedType !== type) {
+        return acc;
+      }
+
+      if (!isTransactionInRange(transaction, startDate, endDate)) {
+        return acc;
+      }
+
+      const amount = Math.abs(Number(transaction.amount) || 0);
+      acc.totalAmount += amount;
+      acc.totalCount += 1;
+      return acc;
+    },
+    { totalAmount: 0, totalCount: 0 }
+  );
+};
+
+const ReportsPage = ({ wallets = [], transactions = [] }) => {
   const [transactionType, setTransactionType] = useState('expense');
   const [groupBy, setGroupBy] = useState('category');
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [startDate, setStartDate] = useState(() => getCurrentMonthStartDate());
+  const [endDate, setEndDate] = useState(() => getTodayDate());
+  const [reportSummary, setReportSummary] = useState(null);
+  const [reportRows, setReportRows] = useState([]);
 
   const walletLookup = useMemo(() => {
     const map = new Map();
     wallets.forEach((wallet) => {
-      map.set(wallet.id, wallet.name);
+      map.set(String(wallet.id), wallet.name);
     });
     return map;
   }, [wallets]);
 
-  useEffect(() => {
-    setSelectedFilter('all');
-  }, [transactionType, groupBy]);
+  const fetchReportData = async () => {
+    const type = normalizeReportType(transactionType);
+    const localRows = buildReportRowsFromTransactions(transactions, groupBy, walletLookup, type, startDate, endDate);
+    const localSummary = buildSummaryFromTransactions(transactions, type, startDate, endDate);
 
-  const filteredByType = useMemo(
-    () => transactions.filter((transaction) => transaction.type === transactionType),
-    [transactions, transactionType]
-  );
-
-  const breakdown = useMemo(() => {
-    const map = new Map();
-
-    filteredByType.forEach((transaction) => {
-      const valueKey = groupBy === 'category' ? transaction.category || 'Khác' : transaction.wallet || 'unassigned';
-      const label =
+    try {
+      const [summaryResult, reportResult] = await Promise.allSettled([
+        getReportSummary(startDate, endDate),
         groupBy === 'category'
-          ? transaction.category || 'Khác'
-          : walletLookup.get(transaction.wallet) || 'Ví chưa xác định';
+          ? getReportByCategory(type, startDate, endDate)
+          : getReportByWallet(type, startDate, endDate),
+      ]);
 
-      if (!map.has(valueKey)) {
-        map.set(valueKey, {
-          value: valueKey,
-          label,
-          total: 0,
-          count: 0,
+      if (summaryResult.status === 'fulfilled') {
+        setReportSummary(summaryResult.value);
+      } else {
+        setReportSummary({
+          [type]: {
+            totalAmount: localSummary.totalAmount,
+            totalCount: localSummary.totalCount,
+          },
         });
       }
 
-      const entry = map.get(valueKey);
-      entry.total += Math.abs(transaction.amount || 0);
-      entry.count += 1;
-    });
+      if (reportResult.status === 'fulfilled') {
+        const nextRows = normalizeReportRows(reportResult.value, groupBy, walletLookup);
+        setReportRows(nextRows.length > 0 ? nextRows : localRows);
+      } else {
+        setReportRows(localRows);
+      }
+    } catch (error) {
+      console.warn('Falling back to local report data:', error);
+      setReportSummary({
+        [type]: {
+          totalAmount: localSummary.totalAmount,
+          totalCount: localSummary.totalCount,
+        },
+      });
+      setReportRows(localRows);
+    }
+  };
 
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [filteredByType, groupBy, walletLookup]);
+  useEffect(() => {
+    setSelectedFilter('all');
+  }, [transactionType, groupBy, startDate, endDate]);
+
+  useEffect(() => {
+    fetchReportData();
+  }, [transactionType, groupBy, startDate, endDate, walletLookup, transactions]);
+
+  const breakdown = useMemo(() => {
+    return [...reportRows].sort((a, b) => b.total - a.total);
+  }, [reportRows]);
 
   useEffect(() => {
     if (selectedFilter === 'all') return;
@@ -75,30 +398,42 @@ const ReportsPage = ({ transactions = [], wallets = [] }) => {
   }, [breakdown, selectedFilter]);
 
   const totalAmount = useMemo(
-    () => filteredByType.reduce((sum, transaction) => sum + Math.abs(transaction.amount || 0), 0),
-    [filteredByType]
+    () =>
+      getSummaryMetric(reportSummary, normalizeReportType(transactionType), [
+        'totalAmount',
+        'amount',
+        'totalAmountValue',
+        'amountTotal',
+        'total',
+        'value',
+        'sum',
+      ]) ?? breakdown.reduce((sum, item) => sum + Math.abs(Number(item.total) || 0), 0),
+    [breakdown, reportSummary, transactionType]
   );
 
-  const filteredTransactions = useMemo(() => {
-    if (selectedFilter === 'all') return filteredByType;
-    return filteredByType.filter((transaction) => {
-      const key = groupBy === 'category' ? transaction.category || 'Khác' : transaction.wallet || 'unassigned';
-      return key === selectedFilter;
-    });
-  }, [filteredByType, selectedFilter, groupBy]);
+
+
+
 
   const highlightedGroup = selectedFilter === 'all'
     ? breakdown[0] || null
     : breakdown.find((item) => item.value === selectedFilter) || null;
 
-  const chartData = breakdown.slice(0, 6).map((item) => ({
-    name: item.label,
-    total: Math.round(item.total),
-  }));
+  const chartData = useMemo(
+    () =>
+      breakdown.slice(0, 6).map((item) => ({
+        name: item.label,
+        total: Math.round(item.total),
+      })),
+    [breakdown]
+  );
 
-  const filterOptions = breakdown.map((item) => ({ value: item.value, label: item.label }));
+  const filterOptions = useMemo(
+    () => breakdown.map((item) => ({ value: item.value, label: item.label })),
+    [breakdown]
+  );
 
-  const emptyState = filteredByType.length === 0;
+  const emptyState = breakdown.length === 0;
 
   return (
     <div className="p-4 sm:p-6 md:p-8 pb-28 md:pb-12">
@@ -109,6 +444,28 @@ const ReportsPage = ({ transactions = [], wallets = [] }) => {
           <p className="text-gray-600">
             Theo dõi hiệu quả chi tiêu và thu nhập theo từng danh mục hoặc ví tiền. Chọn phạm vi mong muốn để xem xu hướng.
           </p>
+
+          <div className="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2 max-w-2xl">
+            <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
+              Từ ngày
+              <input
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
+              Đến ngày
+              <input
+                type="date"
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none"
+              />
+            </label>
+          </div>
         </header>
 
         <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 sm:p-6">
@@ -176,14 +533,10 @@ const ReportsPage = ({ transactions = [], wallets = [] }) => {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">Tổng {transactionType === 'expense' ? 'chi tiêu' : 'thu nhập'}</p>
             <p className="mt-2 text-3xl font-bold text-gray-900">{formatCurrency(totalAmount)}</p>
-          </div>
-          <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Số giao dịch</p>
-            <p className="mt-2 text-3xl font-bold text-gray-900">{filteredTransactions.length}</p>
           </div>
           <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">Nhóm dẫn đầu</p>
@@ -214,23 +567,23 @@ const ReportsPage = ({ transactions = [], wallets = [] }) => {
               Chưa có giao dịch phù hợp để hiển thị biểu đồ.
             </div>
           ) : (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="reportBar" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#4f46e5" stopOpacity={0.9} />
-                      <stop offset="100%" stopColor="#4f46e5" stopOpacity={0.4} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <YAxis
-                    tick={{ fill: '#6b7280', fontSize: 12 }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(value) => `${Math.round(value / 1000)}k`}
-                  />
+            <div className="h-96 min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={80}
+                    outerRadius={120}
+                    paddingAngle={5}
+                    dataKey="total"
+                    nameKey="name"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
                   <Tooltip
                     contentStyle={{
                       borderRadius: 12,
@@ -240,8 +593,8 @@ const ReportsPage = ({ transactions = [], wallets = [] }) => {
                     labelStyle={{ color: '#111827', fontWeight: 600 }}
                     formatter={(value) => formatCurrency(value)}
                   />
-                  <Bar dataKey="total" fill="url(#reportBar)" radius={[12, 12, 0, 0]} />
-                </BarChart>
+                  <Legend verticalAlign="bottom" height={36} />
+                </PieChart>
               </ResponsiveContainer>
             </div>
           )}
@@ -264,7 +617,6 @@ const ReportsPage = ({ transactions = [], wallets = [] }) => {
                 <thead>
                   <tr className="text-xs uppercase tracking-wider text-gray-400">
                     <th className="py-3 pr-4 font-semibold">Nhóm</th>
-                    <th className="py-3 pr-4 font-semibold">Số giao dịch</th>
                     <th className="py-3 pr-4 font-semibold">Tổng tiền</th>
                     <th className="py-3 pr-4 font-semibold">Tỷ trọng</th>
                   </tr>
@@ -276,7 +628,6 @@ const ReportsPage = ({ transactions = [], wallets = [] }) => {
                     return (
                       <tr key={item.value} className={`border-t border-gray-100 ${isActive ? 'bg-indigo-50/40' : ''}`}>
                         <td className="py-3 pr-4 font-medium text-gray-900">{item.label}</td>
-                        <td className="py-3 pr-4 text-gray-600">{item.count}</td>
                         <td className="py-3 pr-4 font-semibold text-gray-900">{formatCurrency(item.total)}</td>
                         <td className="py-3 pr-4 text-gray-600">{share.toFixed(1)}%</td>
                       </tr>

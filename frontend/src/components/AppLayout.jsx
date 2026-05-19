@@ -8,8 +8,16 @@ import {
   LogOut as LogOutIcon,
 } from 'lucide-react';
 import { logOut } from '../services/authService';
+import Chatbot from './Chatbot';
+import VoiceChatLauncher from './VoiceChatLauncher';
 
-const AppLayout = ({ children, activeLink: controlledActiveLink, onNavigate, onLogoutSuccess }) => {
+const AppLayout = ({
+  children,
+  activeLink: controlledActiveLink,
+  onNavigate,
+  onLogoutSuccess,
+  onRefreshTransactions,
+}) => {
   const [internalActiveLink, setInternalActiveLink] = useState('dashboard');
   const isControlled = typeof controlledActiveLink !== 'undefined';
   const activeLink = isControlled ? controlledActiveLink : internalActiveLink;
@@ -132,6 +140,9 @@ const AppLayout = ({ children, activeLink: controlledActiveLink, onNavigate, onL
           </button>
         </div>
       </nav>
+
+      <Chatbot />
+      <VoiceChatLauncher onRefreshTransactions={onRefreshTransactions} />
     </div>
   );
 };

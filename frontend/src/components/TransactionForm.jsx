@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { CATEGORY_OPTIONS } from '../constants/transactionCategories';
+import { getCategoriesByType } from '../services/categoryService';
 
 const createDefaultValues = () => {
   const now = new Date();
   return {
     type: 'expense',
-    category: CATEGORY_OPTIONS[0]?.value || 'Food',
+    category: '',
     wallet: '',
     amount: '',
     note: '',
@@ -49,7 +49,7 @@ const buildInitialValues = (data) => {
 
   return {
     type: normalizeType(data.type),
-    category: data.category || CATEGORY_OPTIONS[0]?.value || 'Food',
+    category: data.category || '',
     wallet: data.wallet || '',
     amount: typeof data.amount === 'number' ? String(Math.abs(data.amount)) : data.amount || '',
     note: data.note || '',
@@ -60,9 +60,20 @@ const buildInitialValues = (data) => {
   };
 };
 
-const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData = null, wallets = [] }) => {
+const TransactionForm = ({
+  open,
+  onClose,
+  onSubmit,
+  onTransactionAdded,
+  initialData,
+  prefilledData = null,
+  wallets = [],
+}) => {
   const [values, setValues] = useState(createDefaultValues());
+  const [categories, setCategories] = useState([]);
   const [error, setError] = useState('');
+  const autoCategoryAppliedRef = useRef(false);
+  const type = values.type;
   const isTransferWithSameWallets =
     values.type === 'transfer' &&
     values.sourceWallet &&
@@ -71,20 +82,110 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
 
   useEffect(() => {
     if (!open) return;
-    const sourceData = prefilledData || initialData;
-    setValues(buildInitialValues(sourceData));
+    setValues(buildInitialValues(initialData));
     setError('');
-  }, [open, initialData, prefilledData]);
+    autoCategoryAppliedRef.current = false;
+  }, [open, initialData]);
+
+  useEffect(() => {
+    if (!open || !prefilledData) return;
+
+    const aiValues = buildInitialValues(prefilledData);
+    setValues((prev) => ({
+      ...prev,
+      type: aiValues.type,
+      amount: aiValues.amount,
+      date: aiValues.date,
+      time: aiValues.time,
+      note: aiValues.note,
+      category: aiValues.category,
+    }));
+    setError('');
+    autoCategoryAppliedRef.current = false;
+  }, [open, prefilledData]);
+
+  const normalizeCategoryMatchValue = (value) => {
+    if (!value) return '';
+    return String(value)
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  };
+
+  useEffect(() => {
+    if (!open || !prefilledData || autoCategoryAppliedRef.current) return;
+
+    const targetCategory = prefilledData.categoryName || prefilledData.category;
+    if (!targetCategory || categories.length === 0) return;
+    if (values.category) {
+      autoCategoryAppliedRef.current = true;
+      return;
+    }
+
+    const normalizedTarget = normalizeCategoryMatchValue(targetCategory);
+    const matched = categories.find(
+      (category) => normalizeCategoryMatchValue(category?.name) === normalizedTarget
+    );
+
+    if (matched?.id != null) {
+      setValues((prev) => ({
+        ...prev,
+        category: String(matched.id),
+      }));
+    }
+
+    autoCategoryAppliedRef.current = true;
+  }, [open, prefilledData, categories, values.category]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      if (type === 'transfer') {
+        setCategories([]);
+        return;
+      }
+
+      const mappedType = type === 'expense' ? 'EXPENSE' : 'INCOME';
+
+      try {
+        const data = await getCategoriesByType(mappedType);
+        setCategories(Array.isArray(data) ? data : []);
+      } catch (fetchError) {
+        console.error('Failed to fetch categories:', fetchError);
+        setCategories([]);
+      }
+    };
+
+    fetchCategories();
+  }, [type]);
+
+  const hasCategoryType = categories.some((category) => typeof category?.type === 'string' && category.type.trim());
+  const visibleCategories = hasCategoryType
+    ? categories.filter((category) => normalizeType(category.type) === values.type)
+    : categories;
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+
+    if (name === 'type') {
+      setValues((prev) => ({
+        ...prev,
+        [name]: value,
+        category: '',
+      }));
+      if (error) {
+        setError('');
+      }
+      return;
+    }
+
     setValues((prev) => ({ ...prev, [name]: value }));
     if (error) {
       setError('');
     }
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     if (!values.amount) {
       setError('Vui lòng nhập số tiền');
@@ -113,8 +214,16 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
       }
     }
 
+    const normalizedType = normalizeType(values.type).toUpperCase();
+    const parsedCategoryId = values.category ? Number.parseInt(values.category, 10) : null;
+    const parsedWalletId = values.wallet ? Number.parseInt(values.wallet, 10) : null;
+    const parsedSourceWalletId = values.sourceWallet ? Number.parseInt(values.sourceWallet, 10) : null;
+    const parsedDestinationWalletId = values.destinationWallet
+      ? Number.parseInt(values.destinationWallet, 10)
+      : null;
+
     const payload = {
-      type: values.type,
+      type: normalizedType,
       amount: parsedAmount,
       note: values.note.trim(),
       date: values.date,
@@ -122,18 +231,23 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
     };
 
     // Add category and wallet for income/expense transactions
-    if (values.type !== 'transfer') {
-      payload.category = values.category;
-      payload.wallet = values.wallet;
+    if (normalizedType !== 'TRANSFER') {
+      payload.categoryId = Number.isNaN(parsedCategoryId) ? null : parsedCategoryId;
+      payload.walletId = Number.isNaN(parsedWalletId) ? null : parsedWalletId;
     } else {
       // Add wallet info for transfer transactions
-      payload.sourceWallet = values.sourceWallet;
-      payload.destinationWallet = values.destinationWallet;
+      payload.categoryId = null;
+      payload.sourceWallet = Number.isNaN(parsedSourceWalletId) ? null : parsedSourceWalletId;
+      payload.destinationWallet = Number.isNaN(parsedDestinationWalletId) ? null : parsedDestinationWalletId;
     }
 
     if (typeof onSubmit === 'function') {
       console.log('TRANSACTION FORM SUBMIT PAYLOAD:', payload);
-      onSubmit(payload);
+      await onSubmit(payload);
+    }
+
+    if (typeof onTransactionAdded === 'function') {
+      await onTransactionAdded();
     }
   };
 
@@ -164,14 +278,14 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
               Loại giao dịch
               <select
                 name="type"
                 value={values.type}
                 onChange={handleChange}
-                className="w-full rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                className="w-full max-w-full rounded-2xl border border-gray-200 px-3 py-2.5 text-sm truncate focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               >
                 <option value="expense">Chi tiêu</option>
                 <option value="income">Thu nhập</option>
@@ -180,17 +294,18 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
             </label>
 
             {values.type !== 'transfer' ? (
-              <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
+              <label className="flex flex-col gap-2 text-sm font-medium text-gray-700 md:col-span-2">
                 Danh mục
                 <select
                   name="category"
                   value={values.category}
                   onChange={handleChange}
-                  className="w-full rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full min-w-0 max-w-full rounded-2xl border border-gray-200 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+                  <option value="">-- Chọn danh mục --</option>
+                  {visibleCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
                     </option>
                   ))}
                 </select>
@@ -204,7 +319,7 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
                   name="wallet"
                   value={values.wallet}
                   onChange={handleChange}
-                  className="w-full rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full max-w-full rounded-2xl border border-gray-200 px-3 py-2.5 text-sm truncate focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
                   <option value="">-- Chọn ví --</option>
                   {wallets.map((wallet) => (
@@ -222,7 +337,7 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
                     name="sourceWallet"
                     value={values.sourceWallet}
                     onChange={handleChange}
-                    className="w-full rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                    className="w-full max-w-full rounded-2xl border border-gray-200 px-3 py-2.5 text-sm truncate focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   >
                     <option value="">-- Chọn ví --</option>
                     {wallets.map((wallet) => (
@@ -239,7 +354,7 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
                     name="destinationWallet"
                     value={values.destinationWallet}
                     onChange={handleChange}
-                    className="w-full rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                    className="w-full max-w-full rounded-2xl border border-gray-200 px-3 py-2.5 text-sm truncate focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   >
                     <option value="">-- Chọn ví --</option>
                     {wallets.map((wallet) => (
@@ -263,27 +378,27 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
                 step="1000"
                 value={values.amount}
                 onChange={handleChange}
-                className="w-full rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                className="w-full max-w-full rounded-2xl border border-gray-200 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 placeholder="Ví dụ: 500000"
               />
             </label>
 
             <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
               Ngày giao dịch
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-row w-full gap-3">
                 <input
                   type="date"
                   name="date"
                   value={values.date}
                   onChange={handleChange}
-                  className="rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="flex-1 min-w-35 w-full max-w-full rounded-2xl border border-gray-200 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 />
                 <input
                   type="time"
                   name="time"
                   value={values.time}
                   onChange={handleChange}
-                  className="rounded-2xl border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-28 sm:w-32 flex-none rounded-2xl border border-gray-200 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
             </label>
@@ -295,7 +410,7 @@ const TransactionForm = ({ open, onClose, onSubmit, initialData, prefilledData =
               name="note"
               value={values.note}
               onChange={handleChange}
-              className="w-full rounded-2xl border border-gray-200 focus:border-indigo-500 focus:ring-indigo-500 px-4 py-3 resize-none"
+              className="w-full max-w-full rounded-2xl border border-gray-200 focus:border-indigo-500 focus:ring-indigo-500 px-3 py-2.5 resize-none"
               rows="3"
               placeholder="Thêm ghi chú cho giao dịch này..."
             />

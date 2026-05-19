@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Camera, Plus } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -11,44 +11,148 @@ import {
 } from 'recharts';
 import BalanceCard from '../components/BalanceCard';
 import InAppScanner from '../components/InAppScanner';
+import RecentTransactions from '../components/RecentTransactions';
 import TransactionForm from '../components/TransactionForm';
+import { extractInvoice } from '../services/ocrService';
+import { createTransaction, createTransfer, getTransactions } from '../services/transactionService.js';
 
-const chartData = [
-  { day: 'T2', spending: 120 },
-  { day: 'T3', spending: 90 },
-  { day: 'T4', spending: 160 },
-  { day: 'T5', spending: 140 },
-  { day: 'T6', spending: 200 },
-  { day: 'T7', spending: 170 },
-  { day: 'CN', spending: 150 },
-];
+const mapExtractedInvoiceToPrefill = (ocrResponse) => {
+  const primaryBill = Array.isArray(ocrResponse?.bills) ? ocrResponse.bills[0] : null;
+  const extracted = primaryBill || ocrResponse?.extracted || {};
+  const localDateTime = typeof extracted.LocalDateTime === 'string' ? extracted.LocalDateTime.trim() : '';
+  const [datePart = '', timePartRaw = ''] = localDateTime.split(' ');
+  const timePart = timePartRaw ? timePartRaw.slice(0, 5) : '';
 
-const mockProcessImage = async (file) => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        type: 'Chi tiêu',
-        category: 'Food',
-        amount: 150000,
-        date: '2026-03-28T20:59',
-      });
-    }, 2000);
-  });
+  return {
+    amount: extracted.Total ?? '',
+    date: datePart,
+    time: timePart,
+    type: 'expense',
+    categoryName: extracted.Category || '',
+    note: 'Quét tự động',
+  };
 };
 
-const submitToAPI = async (payload) => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ success: true, payload });
-    }, 1000);
-  });
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
-const Dashboard = ({ wallets = [] }) => {
+const currencyFormatter = new Intl.NumberFormat('vi-VN', {
+  style: 'currency',
+  currency: 'VND',
+  maximumFractionDigits: 0,
+});
+
+const formatCurrency = (value = 0) => currencyFormatter.format(Math.round(Number(value) || 0));
+
+const getNormalizedType = (transaction) => String(transaction?.type || '').trim().toUpperCase();
+
+const getTransactionDate = (createdAt) => {
+  if (!createdAt) return null;
+  const normalized = String(createdAt).replace(' ', 'T');
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getLastSevenDaysChartData = (transactions = []) => {
+  const today = new Date();
+  const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const buckets = new Map();
+
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    const key = formatDate(date);
+    buckets.set(key, {
+      day: dayNames[date.getDay()],
+      spending: 0,
+    });
+  }
+
+  transactions.forEach((transaction) => {
+    if (getNormalizedType(transaction) !== 'EXPENSE') {
+      return;
+    }
+
+    const parsedDate = getTransactionDate(transaction.createdAt);
+    if (!parsedDate) return;
+
+    const key = formatDate(parsedDate);
+    const bucket = buckets.get(key);
+    if (!bucket) return;
+
+    bucket.spending += Math.abs(Number(transaction.amount) || 0);
+  });
+
+  return Array.from(buckets.values());
+};
+
+const Dashboard = ({ wallets = [], transactions: transactionsProp = [], onRefreshTransactions, onRefreshWallets }) => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [prefilledData, setPrefilledData] = useState(null);
+  const [transactions, setTransactions] = useState(transactionsProp);
+
+  const summary = useMemo(() => {
+    return transactions.reduce(
+      (acc, transaction) => {
+        const amount = Math.abs(Number(transaction.amount) || 0);
+        const normalizedType = getNormalizedType(transaction);
+
+        if (normalizedType === 'INCOME') {
+          acc.income += amount;
+        } else if (normalizedType === 'EXPENSE') {
+          acc.expense += amount;
+        }
+
+        return acc;
+      },
+      { income: 0, expense: 0 }
+    );
+  }, [transactions]);
+
+  const totalBalance = useMemo(
+    () => wallets.reduce((sum, wallet) => sum + (Number(wallet?.balance) || 0), 0),
+    [wallets]
+  );
+
+  const spendingChartData = useMemo(() => getLastSevenDaysChartData(transactions), [transactions]);
+
+  const fetchTransactions = async () => {
+    try {
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      
+      const formattedStart = formatDate(firstDay);
+      const formattedEnd = formatDate(lastDay);
+
+      // Fetch all transaction types (EXPENSE, INCOME, TRANSFER)
+      const data = await getTransactions(formattedStart, formattedEnd);
+      setTransactions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to fetch transactions:', error);
+      setTransactions([]);
+    }
+  };
+
+  const fetchWallets = async () => {
+    if (typeof onRefreshWallets === 'function') {
+      await onRefreshWallets();
+    }
+  };
+
+  useEffect(() => {
+    setTransactions(transactionsProp);
+  }, [transactionsProp]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
 
   const handleOpenManualModal = () => {
     setPrefilledData(null);
@@ -60,28 +164,64 @@ const Dashboard = ({ wallets = [] }) => {
     setPrefilledData(null);
   };
 
-  const handleImageCaptured = async (file) => {
-    setIsScannerOpen(false); // Close scanner immediately
-    setIsProcessing(true);   // Show loading overlay
-
+  const handleImageCaptured = async (imageBlob) => {
+    setIsExtracting(true);
     try {
-      const data = await mockProcessImage(file);
-      setPrefilledData(data); // Save the AI data
-      setIsModalOpen(true);   // Open the form modal
+      const extractedData = await extractInvoice(imageBlob);
+      console.log('EXTRACTED INVOICE DATA:', extractedData);
+
+      setPrefilledData(mapExtractedInvoiceToPrefill(extractedData));
+      setIsScannerOpen(false);
+      setIsModalOpen(true);
     } catch (error) {
       console.error('AI processing failed', error);
-      alert('Lỗi phân tích hóa đơn!');
+      alert('Lỗi phân tích hóa đơn, vui lòng nhập thủ công');
+      setPrefilledData(null);
+      setIsScannerOpen(false);
+      setIsModalOpen(true);
     } finally {
-      setIsProcessing(false); // Hide loading
+      setIsExtracting(false);
     }
   };
 
   const handleSubmitTransaction = async (data) => {
-    await submitToAPI(data);
-    console.log('PAYLOAD SENT TO API:', data);
-    alert('Giao dịch thành công!');
-    setIsModalOpen(false);
-    setPrefilledData(null);
+    try {
+      const createdAt = new Date(`${data.date}T${data.time || '00:00'}:00`).toISOString();
+      const normalizedType = String(data.type || '').trim().toUpperCase();
+
+      if (normalizedType === 'TRANSFER') {
+        await createTransfer({
+          amount: Number(data.amount),
+          note: data.note,
+          createdAt,
+          sourceWalletId: Number(data.sourceWallet),
+          destinationWalletId: Number(data.destinationWallet),
+        });
+      } else {
+        await createTransaction({
+          amount: Number(data.amount),
+          note: data.note,
+          type: normalizedType,
+          createdAt,
+          categoryId: data.categoryId == null ? null : Number(data.categoryId),
+          walletId: data.walletId == null ? null : Number(data.walletId),
+        });
+      }
+
+      alert('Giao dịch thành công!');
+      setIsModalOpen(false);
+      setPrefilledData(null);
+
+      await fetchTransactions();
+      await fetchWallets();
+
+      if (typeof onRefreshTransactions === 'function') {
+        await onRefreshTransactions();
+      }
+    } catch (error) {
+      console.error('Failed to create transaction:', error);
+      alert('Tạo giao dịch thất bại. Vui lòng thử lại.');
+    }
   };
 
   return (
@@ -111,16 +251,22 @@ const Dashboard = ({ wallets = [] }) => {
         </div>
       </div>
 
-      <BalanceCard balance="25.430.000₫" income="+12.500.000₫" expense="-3.850.000₫" />
+      <BalanceCard
+        balance={formatCurrency(totalBalance)}
+        income={`+${formatCurrency(summary.income)}`}
+        expense={`-${formatCurrency(summary.expense)}`}
+      />
+
+      <RecentTransactions transactions={transactions} />
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Xu hướng chi tiêu 7 ngày</h3>
           <span className="text-sm text-gray-500">(đơn vị: nghìn đồng)</span>
         </div>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <div className="h-64 min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <AreaChart data={spendingChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="spendingGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
@@ -133,7 +279,7 @@ const Dashboard = ({ wallets = [] }) => {
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}
                 labelStyle={{ color: '#111827', fontWeight: 600 }}
-                formatter={(value) => `${value}k`}
+                formatter={(value) => formatCurrency(value)}
               />
               <Area
                 type="monotone"
@@ -165,10 +311,10 @@ const Dashboard = ({ wallets = [] }) => {
         />
       )}
 
-      {isProcessing && (
+      {isExtracting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/55 backdrop-blur-sm">
           <div className="rounded-2xl bg-white px-6 py-5 text-center shadow-2xl">
-            <p className="text-sm font-semibold text-gray-900">Đang xử lý ảnh...</p>
+            <p className="text-sm font-semibold text-gray-900">Đang nhờ AI đọc hóa đơn...</p>
             <p className="mt-1 text-xs text-gray-500">AI đang trích xuất số tiền, danh mục và thời gian giao dịch.</p>
           </div>
         </div>
